@@ -1,22 +1,13 @@
 import { Router } from 'express';
-import { createClient } from '@supabase/supabase-js';
 import { Post, PostWithProfile, Profile } from '../types';
+import { supabase } from '../utils/supabaseClient';
 
 const router = Router();
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Supabase credentials are not configured');
-}
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Get posts with pagination
 router.get('/', async (req, res) => {
   try {
-    const { page = 0, limit = 4 } = req.query;
+    const { page = 0, limit = 4, userId } = req.query;
     const start = Number(page) * Number(limit);
     const end = start + Number(limit) - 1;
 

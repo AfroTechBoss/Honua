@@ -12,6 +12,7 @@ import Bookmarks from './pages/Bookmarks';
 import Notifications from './pages/Notifications';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProfileEdit from './pages/ProfileEdit';
+import AuthCallback from './pages/auth/AuthCallback';
 
 const theme = extendTheme({});
 
@@ -36,6 +37,7 @@ function AppRoutes() {
         <Route path="/bookmarks" element={!user ? <Navigate to="/login" replace /> : <Bookmarks />} />
         <Route path="/notifications" element={!user ? <Navigate to="/login" replace /> : <Notifications />} />
         <Route path="/profile/edit" element={!user ? <Navigate to="/login" replace /> : <ProfileEdit />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/" element={user ? <Navigate to="/feed" replace /> : <Navigate to="/login" replace />} />
       </Routes>
     </Router>

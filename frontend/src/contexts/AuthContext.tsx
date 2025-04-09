@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
-import { supabase, getCurrentSession, getCurrentUser } from '../lib/supabase';
+import { supabase, getCurrentUser } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -25,9 +25,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const initializeAuth = async () => {
       try {
         setLoading(true);
-        const currentSession = await getCurrentSession();
-        const currentUser = await getCurrentUser();
-        setSession(currentSession);
+        const { data: { session } } = await supabase.auth.getSession();
+        const currentUser = session?.user ?? null;
+        setSession(session);
         setUser(currentUser);
       } catch (error) {
         console.error('Error initializing auth:', error);
@@ -81,7 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               id: data.user.id,
               username: email.split('@')[0] || `user_${Date.now()}`,
               full_name: '',
-              avatar_url: ''
+              avatar_url: '',
+              role: 'default_role' // Add default role here
             }]);
 
           if (profileError) {

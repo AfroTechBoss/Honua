@@ -15,7 +15,6 @@ import {
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { FcGoogle } from 'react-icons/fc';
 import { useAuth } from '../../contexts/AuthContext';
-import { login } from '../../api/auth';
 
 interface LoginForm {
   email: string;
@@ -28,10 +27,12 @@ const Login = () => {
   const toast = useToast();
   const navigate = useNavigate();
 
+  const { signIn } = useAuth();
+
   const onSubmit = async (data: LoginForm) => {
     try {
       setIsLoading(true);
-      await login(data);
+      await signIn(data.email, data.password);
       toast({
         title: 'Login Successful',
         status: 'success',
