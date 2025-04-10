@@ -19,19 +19,15 @@ import { FaHeart, FaRetweet, FaComment, FaShare } from 'react-icons/fa';
 interface PostProps {
   id: string;
   author: {
-    name: string;
+    full_name: string;
     username: string;
-    avatar: string;
+    avatar_url: string;
   };
   content: string;
-  media?: {
-    type: 'image' | 'video' | 'link';
-    url: string;
-    preview?: string;
-  }[];
-  likes: number;
-  reposts: number;
-  comments: number;
+  media_urls?: string[];
+  likes_count: number;
+  reposts_count: number;
+  comments_count: number;
   timestamp: string;
 }
 
@@ -39,16 +35,16 @@ const Post = ({
   id,
   author,
   content,
-  media,
-  likes,
-  reposts,
-  comments,
+  media_urls,
+  likes_count,
+  reposts_count,
+  comments_count,
   timestamp,
 }: PostProps) => {
   const [isLiked, setIsLiked] = useState(false);
   const [isReposted, setIsReposted] = useState(false);
-  const [likeCount, setLikeCount] = useState(likes);
-  const [repostCount, setRepostCount] = useState(reposts);
+  const [likesCount, setLikesCount] = useState(likes_count);
+  const [repostsCount, setRepostsCount] = useState(reposts_count);
   const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -68,7 +64,7 @@ const Post = ({
     try {
       await postsApi.likePost(id, user.id, isLiked);
       setIsLiked(!isLiked);
-      setLikeCount(isLiked ? likeCount - 1 : likeCount + 1);
+      setLikesCount(isLiked ? likesCount - 1 : likesCount + 1);
     } catch (error) {
       toast({
         title: 'Error',
@@ -95,7 +91,7 @@ const Post = ({
     try {
       await postsApi.repostPost(id, user.id, isReposted);
       setIsReposted(!isReposted);
-      setRepostCount(isReposted ? repostCount - 1 : repostCount + 1);
+      setRepostsCount(isReposted ? repostsCount - 1 : repostsCount + 1);
     } catch (error) {
       toast({
         title: 'Error',
@@ -108,13 +104,48 @@ const Post = ({
   };
 
   const handleComment = () => {
-    // TODO: Implement comment functionality
-    console.log('Comment clicked');
+    if (!user) {
+      toast({
+        title: 'Authentication Required',
+        description: 'Please sign in to comment',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    navigate(`/post/${id}#comments`);
   };
 
-  const handleShare = () => {
-    // TODO: Implement share functionality
-    console.log('Share clicked');
+  const handleShare = async () => {
+    try {
+      await navigator.share({
+        title: 'Share Post',
+        text: content,
+        url: window.location.origin + `/post/${id}`,
+      });
+    } catch (error) {
+      // Fallback for browsers that don't support Web Share API
+      navigator.clipboard.writeText(window.location.origin + `/post/${id}`)
+        .then(() => {
+          toast({
+            title: 'Link Copied',
+            description: 'Post link copied to clipboard',
+            status: 'success',
+            duration: 3000,
+            isClosable: true,
+          });
+        })
+        .catch(() => {
+          toast({
+            title: 'Error',
+            description: 'Failed to copy link',
+            status: 'error',
+            duration: 3000,
+            isClosable: true,
+          });
+        });
+    }
   };
 
   return (
@@ -130,9 +161,9 @@ const Post = ({
       <VStack align="stretch" spacing={4}>
         {/* Author Info */}
         <HStack spacing={3}>
-          <Avatar size="md" src={author.avatar} name={author.name} />
+          <Avatar size="md" src={author.avatar_url} name={author.full_name} />
           <VStack align="start" spacing={0}>
-            <Text fontWeight="bold">{author.name}</Text>
+            <Text fontWeight="bold">{author.full_name}</Text>
             <Text color="gray.500">@{author.username}</Text>
           </VStack>
           <Text color="gray.500" fontSize="sm" ml="auto">
@@ -144,38 +175,28 @@ const Post = ({
         <Text>{content}</Text>
 
         {/* Media Content */}
-        {media && media.length > 0 && (
+        {media_urls && media_urls.length > 0 && (
           <Box borderRadius="md" overflow="hidden">
-            {media.map((item, index) => (
-              <Box key={index}>
-                {item.type === 'image' && (
-                  <Image src={item.url} alt="Post media" />
-                )}
-                {item.type === 'video' && (
+            {media_urls.map((url, index) => (
+              <Box key={`${id}-media-${index}`}>
+                {url.match(/\.(jpg|jpeg|png|gif)$/i) ? (
+                  <Image src={url} alt="Post media" />
+                ) : url.match(/\.(mp4|webm|ogg)$/i) ? (
                   <video
                     controls
                     style={{ width: '100%', maxHeight: '400px' }}
                   >
-                    <source src={item.url} />
+                    <source src={url} />
                   </video>
-                )}
-                {item.type === 'link' && (
-                  <Link href={item.url} isExternal>
+                ) : (
+                  <Link href={url} isExternal>
                     <Box
                       p={2}
                       bg="gray.50"
                       borderRadius="md"
                       _hover={{ bg: 'gray.100' }}
                     >
-                      {item.preview && (
-                        <Image
-                          src={item.preview}
-                          alt="Link preview"
-                          maxH="200px"
-                          objectFit="cover"
-                        />
-                      )}
-                      <Text color="blue.500">{item.url}</Text>
+                      <Text color="blue.500">{url}</Text>
                     </Box>
                   </Link>
                 )}
@@ -192,7 +213,7 @@ const Post = ({
             leftIcon={<Icon as={FaHeart} color={isLiked ? 'red.500' : 'gray.500'} />}
             onClick={handleLike}
           >
-            {likeCount}
+            {likesCount}
           </Button>
           <Button
             variant="ghost"
@@ -200,7 +221,7 @@ const Post = ({
             leftIcon={<Icon as={FaRetweet} color={isReposted ? 'green.500' : 'gray.500'} />}
             onClick={handleRepost}
           >
-            {repostCount}
+            {repostsCount}
           </Button>
           <Button
             variant="ghost"
@@ -208,7 +229,7 @@ const Post = ({
             leftIcon={<Icon as={FaComment} color="gray.500" />}
             onClick={handleComment}
           >
-            {comments}
+            {comments_count}
           </Button>
           <Button
             variant="ghost"

@@ -1,24 +1,22 @@
 import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { supabase } from '../lib/supabase';
+import { API_URL } from './client';
 
 export interface Post {
   id: string;
-  author: {
-    name: string;
-    username: string;
-    avatar: string;
-  };
   content: string;
-  media?: {
-    type: 'image' | 'video' | 'link';
-    url: string;
-    preview?: string;
-  }[];
-  likes: number;
-  reposts: number;
-  comments: number;
-  timestamp: string;
+  user_id: string;
+  likes_count: number;
+  reposts_count: number;
+  comments_count: number;
+  media_urls?: string[];
+  created_at: string;
+  updated_at: string;
+  author?: {
+    username: string;
+    full_name: string;
+    avatar_url: string;
+  };
 }
 
 export interface PostsResponse {
@@ -27,12 +25,28 @@ export interface PostsResponse {
 }
 
 const postsApi = {
-  getPosts: async (page: number = 0): Promise<PostsResponse> => {
+  getPosts: async (page: number = 0, limit: number = 10): Promise<PostsResponse> => {
     try {
-      const response = await axios.get(`${API_URL}/api/posts`, {
-        params: { page, limit: 4 },
-      });
-      return response.data;
+      const { data, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          profiles:user_id (username, full_name, avatar_url)
+        `)
+        .order('created_at', { ascending: false })
+        .range(page * limit, (page + 1) * limit - 1);
+
+      if (error) throw error;
+
+      const posts = data.map(post => ({
+        ...post,
+        author: post.profiles
+      }));
+
+      return {
+        posts,
+        hasMore: data.length === limit
+      };
     } catch (error) {
       console.error('Error fetching posts:', error);
       throw new Error('Failed to fetch posts');
@@ -41,11 +55,24 @@ const postsApi = {
 
   createPost: async (content: string, userId: string): Promise<Post> => {
     try {
-      const response = await axios.post(`${API_URL}/api/posts`, {
-        content,
-        userId,
-      });
-      return response.data;
+      const { data, error } = await supabase
+        .from('posts')
+        .insert([{
+          content,
+          user_id: userId
+        }])
+        .select(`
+          *,
+          profiles:user_id (username, full_name, avatar_url)
+        `)
+        .single();
+
+      if (error) throw error;
+
+      return {
+        ...data,
+        author: data.profiles
+      };
     } catch (error) {
       console.error('Error creating post:', error);
       throw new Error('Failed to create post');

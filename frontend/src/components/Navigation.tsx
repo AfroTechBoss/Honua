@@ -19,6 +19,7 @@ import {
   FaBookmark,
   FaUser,
   FaCog,
+  FaUsers,
 } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
 import { userService, UserProfile } from '../api/user.api';
@@ -120,6 +121,7 @@ const Navigation = () => {
 
       <NavItem icon={FaHome} label="Home" to="/" />
       <NavItem icon={FaCompass} label="Explore" to="/explore" />
+      <NavItem icon={FaUsers} label="Communities" to="/communities" />
       <NavItem
         icon={FaBell}
         label="Notifications"

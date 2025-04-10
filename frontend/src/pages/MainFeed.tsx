@@ -24,13 +24,13 @@ import TrendingTopics from '../components/TrendingTopics';
 import PostComponent from '../components/Post';
 import CreatePostModal from '../components/CreatePostModal';
 import { useAuth } from '../contexts/AuthContext';
-import postsApi, { Post } from '../api/posts';
+import postsApi from '../api/posts';
+import { Post } from '../types/post';
 
 import { useState } from 'react';
 
 const MainFeed = () => {
   const [posts, setPosts] = useState<Post[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filter, setFilter] = useState<string>('latest');
@@ -54,52 +54,112 @@ const MainFeed = () => {
     onOpen();
   };
 
+  const handlePostCreated = (newPost: any) => {
+    const transformedPost = {
+      id: newPost.id,
+      content: newPost.content,
+      user_id: newPost.user_id,
+      author: newPost.author ? {
+        username: newPost.author.username,
+        full_name: newPost.author.full_name,
+        avatar_url: newPost.author.avatar_url || `https://api.dicebear.com/6.x/avatars/svg?seed=${newPost.author.username}`
+      } : {
+        username: 'anonymous',
+        full_name: 'Anonymous User',
+        avatar_url: `https://api.dicebear.com/6.x/avatars/svg?seed=anonymous`
+      },
+      likes_count: 0,
+      reposts_count: 0,
+      comments_count: 0,
+      media_urls: newPost.media_urls || [],
+      created_at: newPost.created_at,
+      updated_at: newPost.updated_at,
+      timestamp: new Date(newPost.created_at).toLocaleString()
+    };
+    setPosts([transformedPost, ...posts])
+  };
+
+  const [isLoading, setIsLoading] = useState<boolean>(false); // Add this line to declare the isLoading state
   const loadPosts = useCallback(async () => {
     if (isLoading || !hasMore) return;
     setIsLoading(true);
-
     try {
-      const page = Math.floor(posts.length / 4);
-      const { posts: newPosts, hasMore: moreAvailable } = await postsApi.getPosts(page);
+      const page = Math.floor(posts.length / 10);
+      const response = await postsApi.getPosts(page);
+      const newPosts = response.posts;
+      const moreAvailable = response.hasMore;
+        
+      // Transform the posts data to match the PostComponent props
+      const transformedPosts = newPosts.map(post => {
+        const defaultAuthor = {
+          username: 'anonymous',
+          full_name: 'Anonymous User',
+          avatar_url: `https://api.dicebear.com/6.x/avatars/svg?seed=anonymous`
+        };
+        
+        return {
+          id: post.id,
+          content: post.content,
+          user_id: post.user_id,
+          author: post.author ? {
+            username: post.author.username,
+            full_name: post.author.full_name,
+            avatar_url: post.author.avatar_url || `https://api.dicebear.com/6.x/avatars/svg?seed=${post.author.username}`
+          } : defaultAuthor,
+          likes_count: post.likes_count || 0,
+          reposts_count: post.reposts_count || 0,
+          comments_count: post.comments_count || 0,
+          media_urls: post.media_urls || [],
+          created_at: post.created_at,
+          updated_at: post.updated_at,
+          timestamp: new Date(post.created_at).toLocaleString()
+        }
+      });
 
-      setPosts(prev => [...prev, ...newPosts]);
+      setPosts(prev => [...prev, ...transformedPosts]);
       setHasMore(moreAvailable);
-      setIsLoading(false);
     } catch (error) {
       console.error('Error loading posts:', error);
       toast({
         title: 'Error loading posts',
-        description: 'Please try again later',
+        description: 'Failed to load posts',
         status: 'error',
         duration: 3000,
         isClosable: true,
       });
+    } finally {
       setIsLoading(false);
     }
-  }, [posts.length, isLoading, hasMore, toast]);
+  }, [isLoading, hasMore, posts.length, toast]);
 
   useEffect(() => {
     loadPosts();
-  }, []);
+  }, [loadPosts]);
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0].isIntersecting) {
-          loadPosts();
+    if (!observerRef.current) {
+        const observer = new IntersectionObserver(
+            entries => {
+                if (entries[0].isIntersecting) {
+                    loadPosts();
+                }
+            },
+            { threshold: 0.5 }
+        );
+        observerRef.current = observer;
+
+        if (lastPostRef.current) {
+            observer.observe(lastPostRef.current);
         }
-      },
-      { threshold: 0.5 }
-    );
-
-    observerRef.current = observer;
-
-    if (lastPostRef.current) {
-      observer.observe(lastPostRef.current);
     }
 
-    return () => observer.disconnect();
-  }, [loadPosts]);
+    return () => {
+        if (observerRef.current) {
+            observerRef.current.disconnect();
+            observerRef.current = null;
+        }
+    };
+}, [loadPosts]);
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -128,7 +188,7 @@ const MainFeed = () => {
 
         {/* Main Feed */}
         <GridItem>
-          <VStack spacing={4} align="stretch">
+          <VStack spacing={4} align="stretch" height="calc(100vh - 2rem)" overflow="hidden">
             {/* Search and Filter */}
             <HStack spacing={4}>
               <InputGroup flex={1}>
@@ -192,10 +252,24 @@ const MainFeed = () => {
             </Box>
 
             {/* Post Feed */}
-            <VStack spacing={4} align="stretch">
+            <VStack spacing={4} align="stretch" flex="1" overflow="auto" css={{
+              '&::-webkit-scrollbar': {
+                width: '8px',
+              },
+              '&::-webkit-scrollbar-track': {
+                background: 'transparent',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: 'rgba(0, 0, 0, 0.2)',
+                borderRadius: '4px',
+              },
+              '&::-webkit-scrollbar-thumb:hover': {
+                background: 'rgba(0, 0, 0, 0.3)',
+              },
+            }}>
               {posts.map((post, index) => (
                 <Box
-                  key={post.id}
+                  key={`${post.id}-${index}`}
                   ref={index === posts.length - 1 ? lastPostRef : null}
                 >
                   <PostComponent {...post} />
@@ -224,7 +298,7 @@ const MainFeed = () => {
       </Grid>
 
       {/* Create Post Modal */}
-      <CreatePostModal isOpen={isOpen} onClose={onClose} />
+      <CreatePostModal isOpen={isOpen} onClose={onClose} onPostCreated={handlePostCreated} />
     </Container>
   );
 };

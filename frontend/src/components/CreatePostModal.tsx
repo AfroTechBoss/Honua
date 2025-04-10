@@ -19,13 +19,16 @@ import {
   Text,
   Input,
   FormControl,
-  Avatar,
+  Avatar
 } from '@chakra-ui/react';
 import { FaImage, FaVideo, FaLink, FaTimes, FaPoll, FaPlus } from 'react-icons/fa';
+import postsApi from '../api/posts';
+import { useAuth } from '../contexts/AuthContext';
 
 interface CreatePostModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onPostCreated?: (newPost: any) => void;
 }
 
 interface MediaItem {
@@ -60,7 +63,8 @@ interface Draft {
   timestamp: number;
 }
 
-const CreatePostModal = ({ isOpen, onClose }: CreatePostModalProps) => {
+const CreatePostModal = ({ isOpen, onClose, onPostCreated }: CreatePostModalProps) => {
+  const { user } = useAuth();
   const [content, setContent] = useState('');
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [isPollActive, setIsPollActive] = useState(false);
@@ -223,7 +227,7 @@ const CreatePostModal = ({ isOpen, onClose }: CreatePostModalProps) => {
     if (!content.trim() && media.length === 0 && !isPollActive) {
       toast({
         title: 'Error',
-        description: 'Please add some content to your post.',
+        description: 'Post must have content, media, or a poll',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -234,7 +238,7 @@ const CreatePostModal = ({ isOpen, onClose }: CreatePostModalProps) => {
     if (isPollActive && (!poll.question.trim() || poll.options.some(opt => !opt.text.trim()))) {
       toast({
         title: 'Error',
-        description: 'Please fill in all poll fields.',
+        description: 'Please fill in all poll fields',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -243,32 +247,51 @@ const CreatePostModal = ({ isOpen, onClose }: CreatePostModalProps) => {
     }
 
     try {
-      // TODO: Implement post creation with backend
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+      // Create the post with content and get the response
+      const createdPost = await postsApi.createPost(content, user?.id || '');
+      
+      // Handle media uploads if present
+      if (media.length > 0) {
+        // TODO: Implement media upload functionality
+        console.log('Uploading media for post:', createdPost.id);
+      }
+
+      // Handle poll creation if active
+      if (isPollActive) {
+        // TODO: Implement poll creation functionality
+        console.log('Creating poll for post:', createdPost.id);
+      }
+
+      // TODO: Handle media uploads and poll creation in separate API calls
+      // For now, we'll just create the basic post
+
+      // Notify parent component about the new post
+      if (onPostCreated) {
+        onPostCreated(createdPost);
+      }
 
       toast({
         title: 'Success',
-        description: 'Your post has been created successfully!',
+        description: 'Post created successfully',
         status: 'success',
         duration: 3000,
         isClosable: true,
       });
-      
-      // Clear the form
+      onClose();
       setContent('');
       setMedia([]);
-      setIsPollActive(false);
       setPoll({
         question: '',
         options: [{ text: '', votes: 0 }, { text: '', votes: 0 }],
         duration: 24
       });
+      setIsPollActive(false);
       localStorage.removeItem('postDraft');
-      onClose();
     } catch (error) {
+      console.error('Error creating post:', error);
       toast({
         title: 'Error',
-        description: 'Failed to create post. Please try again.',
+        description: 'Failed to create post',
         status: 'error',
         duration: 3000,
         isClosable: true,

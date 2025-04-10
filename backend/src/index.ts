@@ -2,8 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import postsRouter from './routes/posts';
 
+// Load environment variables before any other code
 dotenv.config();
+
+// Validate required environment variables
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  console.error('Error: SUPABASE_URL and SUPABASE_ANON_KEY must be set in .env');
+  process.exit(1);
+}
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -91,6 +99,9 @@ app.post('/auth/forgot-password', async (req: express.Request, res: express.Resp
     res.status(400).json({ error: error.message });
   }
 });
+
+// Mount routes
+app.use('/api/posts', postsRouter);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
