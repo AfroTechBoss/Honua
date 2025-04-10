@@ -269,7 +269,7 @@ const MainFeed = () => {
             }}>
               {posts.map((post, index) => (
                 <Box
-                  key={post.id}
+                  key={`${post.id}-${index}`}
                   ref={index === posts.length - 1 ? lastPostRef : null}
                 >
                   <PostComponent {...post} />

@@ -178,7 +178,7 @@ const Post = ({
         {media_urls && media_urls.length > 0 && (
           <Box borderRadius="md" overflow="hidden">
             {media_urls.map((url, index) => (
-              <Box key={index}>
+              <Box key={`${id}-media-${index}`}>
                 {url.match(/\.(jpg|jpeg|png|gif)$/i) ? (
                   <Image src={url} alt="Post media" />
                 ) : url.match(/\.(mp4|webm|ogg)$/i) ? (
