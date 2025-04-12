@@ -1,5 +1,3 @@
-import { getLinkPreview } from 'link-preview-js';
-
 export interface LinkPreview {
   url: string;
   title: string;
@@ -7,6 +5,9 @@ export interface LinkPreview {
   image?: string;
   siteName?: string;
 }
+
+// Backend API endpoint for link previews
+const LINK_PREVIEW_API = '/api/link-preview/preview';
 
 export const extractLinkPreviews = async (content: string): Promise<LinkPreview[]> => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -20,33 +21,32 @@ export const extractLinkPreviews = async (content: string): Promise<LinkPreview[
     const previews = await Promise.all(
       uniqueUrls.map(async (url) => {
         try {
-          const preview = await getLinkPreview(url, {
-            headers: {
-              'user-agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
-            }
-          });
+          const response = await fetch(`${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}`);
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          const preview = await response.json();
           
-          if ('title' in preview) {
-            return {
-              url,
-              title: preview.title || '',
-              description: preview.description || '',
-              image: Array.isArray(preview.images) && preview.images.length > 0 ? preview.images[0] : undefined,
-              siteName: preview.siteName
-            } as LinkPreview;
-          }
-          
-          // Handle fallback case for minimal metadata
           return {
-            url,
-            title: url,
-            description: '',
-            image: undefined,
-            siteName: undefined
-          };
+            url: preview.url,
+            title: preview.title,
+            description: preview.description || '',
+            image: preview.image,
+            siteName: preview.siteName
+          } as LinkPreview;
         } catch (error) {
           console.error(`Error fetching preview for ${url}:`, error);
-          return null;
+          // Return basic URL info on error
+          try {
+            const urlObj = new URL(url);
+            return {
+              url,
+              title: urlObj.hostname,
+              description: '',
+              image: undefined,
+              siteName: urlObj.hostname
+            };
+          } catch {
+            return null;
+          }
         }
       })
     );
