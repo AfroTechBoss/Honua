@@ -6,6 +6,7 @@ import {
   Grid,
   GridItem,
   VStack,
+  HStack,
   Text,
   Button,
   Avatar,
@@ -36,48 +37,148 @@ interface ProfileData {
   updated_at: string;
 }
 
+interface ProfileStats {
+  followers_count: number;
+  following_count: number;
+}
+
 const Profile = () => {
-  const { userId } = useParams<{ userId: string }>();
+  const { username } = useParams<{ username?: string }>();
   const { user } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [profileStats, setProfileStats] = useState<ProfileStats>({ followers_count: 0, following_count: 0 });
+  interface Post {
+  id: string;
+  content: string;
+  created_at: string;
+  likes_count: number;
+  reposts_count: number;
+  comments_count: number;
+}
+
+const [userPosts, setUserPosts] = useState<Post[]>([]);
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const toast = useToast();
 
-  const isOwnProfile = user?.id === (userId || user?.id);
+  const isOwnProfile = !username || (user && profile && user.id === profile.id);
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const profileData = await userService.getUserProfile(userId || user?.id || '');
-        if (!profileData) {
-          setError('Profile not found');
-          return;
-        }
-        setProfile(profileData);
-      } catch (err) {
-        console.error('Error fetching profile:', err);
-        setError('Failed to load profile');
+    fetchProfile();
+  }, [user, username]);
+
+  useEffect(() => {
+    if (profile) {
+      fetchProfileStats();
+      fetchUserPosts();
+    }
+  }, [profile]);
+
+  const fetchProfileStats = async () => {
+    if (!profile) return;
+    try {
+      const [followers, following] = await Promise.all([
+        userService.getFollowerCount(profile.id),
+        userService.getFollowingCount(profile.id)
+      ]);
+      setProfileStats({ followers_count: followers, following_count: following });
+    } catch (error) {
+      console.error('Error fetching profile stats:', error);
+    }
+  };
+
+  const fetchUserPosts = async () => {
+    if (!profile) return;
+    try {
+      const posts = await userService.getUserPosts(profile.id);
+      setUserPosts(posts);
+    } catch (error) {
+      console.error('Error fetching user posts:', error);
+    }
+  };
+
+  useEffect(() => {
+    const checkFollowingStatus = async () => {
+      if (user && profile && !isOwnProfile) {
+        const followingStatus = await userService.isFollowing(user.id, profile.id);
+        setIsFollowing(followingStatus);
+      }
+    };
+    checkFollowingStatus();
+  }, [user, profile, isOwnProfile]);
+
+  const handleFollow = async () => {
+    if (!user || !profile) return;
+    try {
+      if (isFollowing) {
+        await userService.unfollowUser(user.id, profile.id);
+        setIsFollowing(false);
         toast({
-          title: 'Error',
-          description: 'Failed to load profile',
-          status: 'error',
+          title: 'Unfollowed',
+          description: `You have unfollowed ${profile.username}`,
+          status: 'info',
           duration: 3000,
           isClosable: true,
         });
-      } finally {
-        setIsLoading(false);
+      } else {
+        await userService.followUser(user.id, profile.id);
+        setIsFollowing(true);
+        toast({
+          title: 'Following',
+          description: `You are now following ${profile.username}`,
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+        });
       }
-    };
-
-    if (user) {
-      fetchProfile();
+    } catch (error) {
+      console.error('Error updating follow status:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update follow status',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
     }
-  }, [user, userId, toast]);
+  };
+
+  const fetchProfile = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      let profileData;
+      if (username) {
+        profileData = await userService.getUserProfileByUsername(username);
+      } else if (user?.id) {
+        profileData = await userService.getUserProfile(user.id);
+      } else {
+        setError('No user found');
+        return;
+      }
+      if (!profileData) {
+        setError('Profile not found');
+        return;
+      }
+      setProfile(profileData);
+    } catch (err) {
+      console.error('Error fetching profile:', err);
+      setError('Failed to load profile');
+      toast({
+        title: 'Error',
+        description: 'Failed to load profile',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleEditProfile = () => {
     onOpen();
@@ -162,11 +263,24 @@ const Profile = () => {
                 name={profile.full_name || profile.username}
                 mb={4}
               />
-              <VStack spacing={2}>
+              <VStack spacing={4}>
                 <Text fontSize="2xl" fontWeight="bold">
                   {profile.full_name}
                 </Text>
                 <Text color="gray.500">@{profile.username}</Text>
+                
+                {/* Follower/Following Stats */}
+                <HStack spacing={6} justify="center">
+                  <VStack>
+                    <Text fontWeight="bold">{profileStats.followers_count}</Text>
+                    <Text color="gray.500">Followers</Text>
+                  </VStack>
+                  <VStack>
+                    <Text fontWeight="bold">{profileStats.following_count}</Text>
+                    <Text color="gray.500">Following</Text>
+                  </VStack>
+                </HStack>
+
                 {isOwnProfile && (
                   <Button
                     leftIcon={<Icon as={FaEdit} />}
@@ -177,9 +291,18 @@ const Profile = () => {
                     Edit Profile
                   </Button>
                 )}
-              </VStack>
+                {!isOwnProfile && (
+                  <Button
+                    onClick={handleFollow}
+                    colorScheme="blue"
+                    variant={isFollowing ? "outline" : "solid"}
+                  >
+                    {isFollowing ? "Unfollow" : "Follow"}
+                  </Button>
+                )}
 
-              {profile.bio && <Text mt={4}>{profile.bio}</Text>}
+                {profile.bio && <Text>{profile.bio}</Text>}
+              </VStack>
             </Box>
 
             {/* Content Tabs */}
@@ -193,20 +316,26 @@ const Profile = () => {
               <TabPanels>
                 <TabPanel px={0}>
                   <VStack spacing={4} align="stretch">
-                    {/* TODO: Replace with actual posts */}
-                    <Post
-                      id="1"
-                      author={{
-                        name: profile.full_name,
-                        username: profile.username,
-                        avatar: profile.avatar_url || ''
-                      }}
-                      content="This is a sample post about sustainability."
-                      likes={42}
-                      reposts={12}
-                      comments={5}
-                      timestamp="2 hours ago"
-                    />
+                    {userPosts.length > 0 ? (
+                      userPosts.map(post => (
+                        <Post
+                          key={post.id}
+                          id={post.id}
+                          author={{
+                            full_name: profile.full_name,
+                            username: profile.username,
+                            avatar_url: profile.avatar_url || ''
+                          }}
+                          content={post.content}
+                          timestamp={new Date(post.created_at).toLocaleString()}
+                          likes_count={post.likes_count}
+                          reposts_count={post.reposts_count}
+                          comments_count={post.comments_count}
+                        />
+                      ))
+                    ) : (
+                      <Text color="gray.500">No posts yet</Text>
+                    )}
                   </VStack>
                 </TabPanel>
                 <TabPanel px={0}>

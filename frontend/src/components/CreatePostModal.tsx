@@ -141,8 +141,10 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }: CreatePostModalProp
 
   const handleRemoveMedia = (index: number) => {
     const newMedia = [...media];
-    if (newMedia[index].url.startsWith('blob:')) {
-      URL.revokeObjectURL(newMedia[index].url);
+    const removedItem = newMedia[index];
+    // Always revoke blob URL if it exists
+    if (removedItem.url.startsWith('blob:')) {
+      URL.revokeObjectURL(removedItem.url);
     }
     newMedia.splice(index, 1);
     setMedia(newMedia);
@@ -223,22 +225,23 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }: CreatePostModalProp
     onClose();
   };
 
-  const handlePost = async () => {
-    if (!content.trim() && media.length === 0 && !isPollActive) {
-      toast({
-        title: 'Error',
-        description: 'Post must have content, media, or a poll',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
+    // Cleanup blob URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      // Cleanup any remaining blob URLs
+      media.forEach(item => {
+        if (item.url.startsWith('blob:')) {
+          URL.revokeObjectURL(item.url);
+        }
       });
-      return;
-    }
+    };
+  }, []);
 
-    if (isPollActive && (!poll.question.trim() || poll.options.some(opt => !opt.text.trim()))) {
+  const handlePost = async () => {
+    if (!content.trim()) {
       toast({
         title: 'Error',
-        description: 'Please fill in all poll fields',
+        description: 'Post content cannot be empty',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -247,29 +250,20 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }: CreatePostModalProp
     }
 
     try {
-      // Create the post with content and get the response
-      const createdPost = await postsApi.createPost(content, user?.id || '');
-      
-      // Handle media uploads if present
-      if (media.length > 0) {
-        // TODO: Implement media upload functionality
-        console.log('Uploading media for post:', createdPost.id);
+      // Upload media files first
+      const mediaUrls = [];
+      for (const mediaItem of media) {
+        if (mediaItem.file) {
+          const { uploadMedia } = await import('../utils/mediaUpload');
+          const uploadedMedia = await uploadMedia(mediaItem.file);
+          mediaUrls.push(uploadedMedia.url);
+        } else if (mediaItem.type === 'link') {
+          mediaUrls.push(mediaItem.url);
+        }
       }
 
-      // Handle poll creation if active
-      if (isPollActive) {
-        // TODO: Implement poll creation functionality
-        console.log('Creating poll for post:', createdPost.id);
-      }
-
-      // TODO: Handle media uploads and poll creation in separate API calls
-      // For now, we'll just create the basic post
-
-      // Notify parent component about the new post
-      if (onPostCreated) {
-        onPostCreated(createdPost);
-      }
-
+      // Create post with media URLs
+      const createdPost = await postsApi.createPost(content, user?.id || '', mediaUrls);
       toast({
         title: 'Success',
         description: 'Post created successfully',
@@ -277,16 +271,24 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }: CreatePostModalProp
         duration: 3000,
         isClosable: true,
       });
-      onClose();
+
+      // Clear form
       setContent('');
       setMedia([]);
+      setIsPollActive(false);
       setPoll({
         question: '',
         options: [{ text: '', votes: 0 }, { text: '', votes: 0 }],
         duration: 24
       });
-      setIsPollActive(false);
+      setMentions([]);
       localStorage.removeItem('postDraft');
+
+      if (onPostCreated) {
+        onPostCreated(createdPost);
+      }
+
+      onClose();
     } catch (error) {
       console.error('Error creating post:', error);
       toast({
@@ -592,6 +594,6 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }: CreatePostModalProp
       </ModalContent>
     </Modal>
   );
-}
+};
 
 export default CreatePostModal;

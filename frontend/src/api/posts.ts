@@ -53,13 +53,14 @@ const postsApi = {
     }
   },
 
-  createPost: async (content: string, userId: string): Promise<Post> => {
+  createPost: async (content: string, userId: string, media_urls: string[] = []): Promise<Post> => {
     try {
       const { data, error } = await supabase
         .from('posts')
         .insert([{
           content,
-          user_id: userId
+          user_id: userId,
+          media_urls
         }])
         .select(`
           *,
