@@ -1,6 +1,15 @@
 import express from 'express';
 import { getLinkPreview } from 'link-preview-js';
-import { supabase } from '../utils/supabaseClient';
+import { createClient } from '@supabase/supabase-js';
+
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY must be set in .env');
+}
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
 
 const router = express.Router();
 
@@ -11,6 +20,24 @@ interface LinkPreview {
   image?: string;
   siteName?: string;
   timestamp: number;
+}
+
+interface PreviewResponse {
+  url: string;
+  title?: string;
+  siteName?: string;
+  description?: string;
+  mediaType: string;
+  contentType?: string;
+  images: string[];
+  videos: Array<{
+    url?: string;
+    secureUrl?: string;
+    type?: string;
+    width?: string;
+    height?: string;
+  }>;
+  favicons: string[];
 }
 
 // Cache duration in milliseconds (24 hours)
@@ -54,50 +81,60 @@ router.get('/preview', async (req, res) => {
 
     // If we have a valid cached preview that's not expired, return it
     if (cachedPreview && Date.now() - cachedPreview.timestamp < CACHE_DURATION) {
+      res.setHeader('Content-Type', 'application/json');
       return res.json(cachedPreview);
     }
 
+    // Validate URL format
+    let urlObj: URL;
+    try {
+      urlObj = new URL(url);
+    } catch (error) {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
     // Fetch fresh preview with better error handling
-    let preview;
+    let preview: PreviewResponse;
     try {
       preview = await getLinkPreview(url, {
         headers: {
-          'user-agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
         },
-        timeout: 10000 // 10 second timeout
-      });
-    } catch (previewError) {
-      console.error('Error fetching link preview:', previewError);
-      // Handle the error gracefully by falling back to basic URL info
-      const urlObj = new URL(url);
-      return res.json({
-        url,
-        title: urlObj.hostname,
-        description: '',
-        image: undefined,
-        siteName: urlObj.hostname,
-        timestamp: Date.now()
-      });
-    }
+        timeout: 15000, // 15 second timeout
+        followRedirects: 'error'
+      }) as PreviewResponse;
 
-    let linkPreview: LinkPreview;
-
-    if (preview && 'title' in preview) {
-      linkPreview = {
+      const linkPreview: LinkPreview = {
         url,
-        title: preview.title || new URL(url).hostname,
+        title: preview.title || urlObj.hostname,
         description: preview.description || '',
-        image: Array.isArray(preview.images) && preview.images.length > 0
+        image: preview.images && preview.images.length > 0
           ? resolveImageUrl(preview.images[0], url)
           : undefined,
-        siteName: preview.siteName || new URL(url).hostname,
+        siteName: preview.siteName || urlObj.hostname,
         timestamp: Date.now()
       };
-    } else {
-      // Fallback to basic URL info
-      const urlObj = new URL(url);
-      linkPreview = {
+
+      // Update cache
+      await supabase
+        .from('link_previews')
+        .upsert(linkPreview, { onConflict: 'url' });
+
+      res.setHeader('Content-Type', 'application/json');
+      return res.json(linkPreview);
+
+    } catch (previewError) {
+      console.error('Error fetching link preview:', previewError);
+      // Log detailed error information for debugging
+      console.log('URL:', url);
+      if (previewError instanceof Error) {
+        console.log('Error details:', previewError.message);
+      }
+
+      // Handle the error gracefully by falling back to basic URL info
+      const fallbackPreview: LinkPreview = {
         url,
         title: urlObj.hostname,
         description: '',
@@ -105,31 +142,13 @@ router.get('/preview', async (req, res) => {
         siteName: urlObj.hostname,
         timestamp: Date.now()
       };
+
+      res.setHeader('Content-Type', 'application/json');
+      return res.json(fallbackPreview);
     }
-
-    // Update cache
-    await supabase
-      .from('link_previews')
-      .upsert(linkPreview, { onConflict: 'url' });
-
-    res.json(linkPreview);
   } catch (error) {
-    console.error('Error fetching link preview:', error);
-    // Return basic URL info on error
-    try {
-      const urlObj = new URL(req.query.url as string);
-      const fallbackPreview = {
-        url: req.query.url,
-        title: urlObj.hostname,
-        description: '',
-        image: undefined,
-        siteName: urlObj.hostname,
-        timestamp: Date.now()
-      };
-      res.json(fallbackPreview);
-    } catch {
-      res.status(500).json({ error: 'Failed to fetch link preview' });
-    }
+    console.error('Error in link preview route:', error);
+    return res.status(500).json({ error: 'Failed to fetch link preview' });
   }
 });
 

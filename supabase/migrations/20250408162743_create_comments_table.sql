@@ -1,20 +1,20 @@
 -- Create comments table
 create table if not exists public.comments (
-    id uuid default gen_random_uuid() primary key,
+    comment_id uuid default gen_random_uuid() primary key,
     content text not null,
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    author_id uuid references auth.users(id) on delete set null,
-    post_id uuid references public.forum_posts(id) on delete cascade,
-    parent_id uuid references public.comments(id) on delete cascade,
+    user_id uuid references auth.users not null,
+    post_id uuid references public.posts(post_id) on delete cascade,
+    parent_id uuid references public.comments(comment_id) on delete cascade,
     karma_score bigint default 0,
     is_edited boolean default false
 );
 
 -- Create comment_votes table for tracking upvotes/downvotes
 create table if not exists public.comment_votes (
-    comment_id uuid references public.comments(id) on delete cascade,
-    user_id uuid references auth.users(id) on delete cascade,
+    comment_id uuid references public.comments(comment_id) on delete cascade,
+    user_id uuid references auth.users not null,
     vote_type smallint check (vote_type in (-1, 1)),
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     primary key (comment_id, user_id)
@@ -30,17 +30,17 @@ begin
   if (TG_OP = 'DELETE') then
     update public.comments
     set karma_score = karma_score - OLD.vote_type
-    where id = OLD.comment_id;
+    where comment_id = OLD.comment_id;
     return OLD;
   elsif (TG_OP = 'INSERT') then
     update public.comments
     set karma_score = karma_score + NEW.vote_type
-    where id = NEW.comment_id;
+    where comment_id = NEW.comment_id;
     return NEW;
   elsif (TG_OP = 'UPDATE') then
     update public.comments
     set karma_score = karma_score - OLD.vote_type + NEW.vote_type
-    where id = NEW.comment_id;
+    where comment_id = NEW.comment_id;
     return NEW;
   end if;
   return null;
@@ -61,14 +61,14 @@ security definer
 as $$
 begin
   if (TG_OP = 'DELETE') then
-    update public.forum_posts
+    update public.posts
     set comment_count = comment_count - 1
-    where id = OLD.post_id;
+    where post_id = OLD.post_id;
     return OLD;
   elsif (TG_OP = 'INSERT') then
-    update public.forum_posts
+    update public.posts
     set comment_count = comment_count + 1
-    where id = NEW.post_id;
+    where post_id = NEW.post_id;
     return NEW;
   end if;
   return null;
@@ -94,19 +94,19 @@ using (true);
 create policy "Authenticated users can create comments"
 on public.comments for insert
 to authenticated
-with check (author_id = auth.uid());
+with check (user_id = auth.uid());
 
 create policy "Comment authors can update their comments"
 on public.comments for update
 to authenticated
 using (
-  author_id = auth.uid() or
+  user_id = auth.uid() or
   exists (
-    select 1 from public.forum_posts
-    where id = comments.post_id
+    select 1 from public.posts
+    where post_id = comments.post_id
     and exists (
       select 1 from public.community_members
-      where community_id = forum_posts.community_id
+      where community_id = posts.community_id
       and user_id = auth.uid()
       and role in ('admin', 'moderator')
     )
@@ -117,13 +117,13 @@ create policy "Comment authors and moderators can delete comments"
 on public.comments for delete
 to authenticated
 using (
-  author_id = auth.uid() or
+  user_id = auth.uid() or
   exists (
-    select 1 from public.forum_posts
-    where id = comments.post_id
+    select 1 from public.posts
+    where post_id = comments.post_id
     and exists (
       select 1 from public.community_members
-      where community_id = forum_posts.community_id
+      where community_id = posts.community_id
       and user_id = auth.uid()
       and role in ('admin', 'moderator')
     )

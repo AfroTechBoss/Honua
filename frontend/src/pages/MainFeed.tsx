@@ -1,4 +1,5 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Box,
   Container,
@@ -19,6 +20,7 @@ import {
 } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
 import { FaSearch, FaPlus, FaFilter } from 'react-icons/fa';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import Navigation from '../components/Navigation';
 import TrendingTopics from '../components/TrendingTopics';
 import PostComponent from '../components/Post';
@@ -26,19 +28,57 @@ import CreatePostModal from '../components/CreatePostModal';
 import { useAuth } from '../contexts/AuthContext';
 import postsApi from '../api/posts';
 import { Post } from '../types/post';
-
 import { useState } from 'react';
 
+interface PostResponse {
+  posts: Post[];
+  hasMore: boolean;
+}
+
 const MainFeed = () => {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [hasMore, setHasMore] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filter, setFilter] = useState<string>('latest');
   const { isOpen, onOpen, onClose } = useDisclosure();
-  const observerRef = useRef<IntersectionObserver | null>(null);
   const lastPostRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const toast = useToast();
+  const queryClient = useQueryClient();
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading
+  } = useInfiniteQuery({
+    queryKey: ['posts', filter, searchQuery],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam = 0 }) => {
+      const response = await postsApi.getPosts(pageParam);
+      return response;
+    },
+    getNextPageParam: (lastPage: PostResponse) => {
+      return lastPage.hasMore ? lastPage.posts.length : undefined;
+    },
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { threshold: 0.5 }
+    );
+
+    if (lastPostRef.current) {
+      observer.observe(lastPostRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   const handleCreatePost = () => {
     if (!user) {
@@ -54,124 +94,20 @@ const MainFeed = () => {
     onOpen();
   };
 
-  const handlePostCreated = (newPost: any) => {
-    const transformedPost = {
-      id: newPost.id,
-      content: newPost.content,
-      user_id: newPost.user_id,
-      author: newPost.author ? {
-        username: newPost.author.username,
-        full_name: newPost.author.full_name,
-        avatar_url: newPost.author.avatar_url || `https://api.dicebear.com/6.x/avatars/svg?seed=${newPost.author.username}`
-      } : {
-        username: 'anonymous',
-        full_name: 'Anonymous User',
-        avatar_url: `https://api.dicebear.com/6.x/avatars/svg?seed=anonymous`
-      },
-      likes_count: 0,
-      reposts_count: 0,
-      comments_count: 0,
-      media_urls: newPost.media_urls || [],
-      created_at: newPost.created_at,
-      updated_at: newPost.updated_at,
-      timestamp: new Date(newPost.created_at).toLocaleString()
-    };
-    setPosts([transformedPost, ...posts])
+  const handlePostCreated = () => {
+    // Invalidate and refetch posts query to include the new post
+    queryClient.invalidateQueries({ queryKey: ['posts'] });
   };
-
-  const [isLoading, setIsLoading] = useState<boolean>(false); // Add this line to declare the isLoading state
-  const loadPosts = useCallback(async () => {
-    if (isLoading || !hasMore) return;
-    setIsLoading(true);
-    try {
-      const page = Math.floor(posts.length / 10);
-      const response = await postsApi.getPosts(page);
-      const newPosts = response.posts;
-      const moreAvailable = response.hasMore;
-        
-      // Transform the posts data to match the PostComponent props
-      const transformedPosts = newPosts.map(post => {
-        const defaultAuthor = {
-          username: 'anonymous',
-          full_name: 'Anonymous User',
-          avatar_url: `https://api.dicebear.com/6.x/avatars/svg?seed=anonymous`
-        };
-        
-        return {
-          id: post.id,
-          content: post.content,
-          user_id: post.user_id,
-          author: post.author ? {
-            username: post.author.username,
-            full_name: post.author.full_name,
-            avatar_url: post.author.avatar_url || `https://api.dicebear.com/6.x/avatars/svg?seed=${post.author.username}`
-          } : defaultAuthor,
-          likes_count: post.likes_count || 0,
-          reposts_count: post.reposts_count || 0,
-          comments_count: post.comments_count || 0,
-          media_urls: post.media_urls || [],
-          created_at: post.created_at,
-          updated_at: post.updated_at,
-          timestamp: new Date(post.created_at).toLocaleString()
-        }
-      });
-
-      setPosts(prev => [...prev, ...transformedPosts]);
-      setHasMore(moreAvailable);
-    } catch (error) {
-      console.error('Error loading posts:', error);
-      toast({
-        title: 'Error loading posts',
-        description: 'Failed to load posts',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isLoading, hasMore, posts.length, toast]);
-
-  useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
-
-  useEffect(() => {
-    if (!observerRef.current) {
-        const observer = new IntersectionObserver(
-            entries => {
-                if (entries[0].isIntersecting) {
-                    loadPosts();
-                }
-            },
-            { threshold: 0.5 }
-        );
-        observerRef.current = observer;
-
-        if (lastPostRef.current) {
-            observer.observe(lastPostRef.current);
-        }
-    }
-
-    return () => {
-        if (observerRef.current) {
-            observerRef.current.disconnect();
-            observerRef.current = null;
-        }
-    };
-}, [loadPosts]);
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    // TODO: Implement search functionality
-    console.log('Searching for:', query);
   };
 
   const handleFilterChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setFilter(event.target.value);
-    // TODO: Implement filter functionality
-    console.log('Filter changed to:', event.target.value);
   };
+
+  const allPosts = data?.pages.flatMap(page => page.posts) || [];
 
   return (
     <Container maxW="container.xl" py={4}>
@@ -267,10 +203,10 @@ const MainFeed = () => {
                 background: 'rgba(0, 0, 0, 0.3)',
               },
             }}>
-              {posts.map((post, index) => (
+              {allPosts.map((post: Post, index) => (
                 <Box
                   key={`${post.id}-${index}`}
-                  ref={index === posts.length - 1 ? lastPostRef : null}
+                  ref={index === allPosts.length - 1 ? lastPostRef : null}
                 >
                   <PostComponent {...post} />
                 </Box>
@@ -280,7 +216,7 @@ const MainFeed = () => {
                   <Spinner size="lg" />
                 </Box>
               )}
-              {!isLoading && !hasMore && (
+              {!isLoading && !hasNextPage && (
                 <Text textAlign="center" color="gray.500">
                   No more posts to load
                 </Text>

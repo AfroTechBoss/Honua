@@ -40,7 +40,19 @@ export default function SinglePost() {
   const { user } = useAuth();
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || id === 'undefined') {
+      setError('Invalid post ID');
+      setIsLoading(false);
+      return;
+    }
+
+    // UUID validation regex
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      setError('Invalid post ID format');
+      setIsLoading(false);
+      return;
+    }
 
     const fetchPostAndComments = async () => {
       try {
@@ -52,7 +64,7 @@ export default function SinglePost() {
             profiles:user_id (username, full_name, avatar_url),
             communities:community_id (name)
           `)
-          .eq('id', id)
+          .eq('post_id', id)
           .single();
 
         let postData;
@@ -72,7 +84,7 @@ export default function SinglePost() {
               *,
               profiles:user_id (username, full_name, avatar_url)
             `)
-            .eq('id', id)
+            .eq('post_id', id)
             .single();
 
           if (mainPostError) throw mainPostError;

@@ -1,6 +1,6 @@
 -- Create post_likes table
 create table if not exists public.post_likes (
-    post_id uuid references public.forum_posts(id) on delete cascade,
+    post_id uuid references public.posts(post_id) on delete cascade,
     user_id uuid references auth.users(id) on delete cascade,
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     primary key (post_id, user_id)
@@ -8,7 +8,7 @@ create table if not exists public.post_likes (
 
 -- Create post_reposts table
 create table if not exists public.post_reposts (
-    post_id uuid references public.forum_posts(id) on delete cascade,
+    post_id uuid references public.posts(post_id) on delete cascade,
     user_id uuid references auth.users(id) on delete cascade,
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     primary key (post_id, user_id)
@@ -22,14 +22,14 @@ security definer
 as $$
 begin
   if (TG_OP = 'DELETE') then
-    update public.forum_posts
+    update public.posts
     set likes_count = likes_count - 1
-    where id = OLD.post_id;
+    where post_id = OLD.post_id;
     return OLD;
   elsif (TG_OP = 'INSERT') then
-    update public.forum_posts
+    update public.posts
     set likes_count = likes_count + 1
-    where id = NEW.post_id;
+    where post_id = NEW.post_id;
     return NEW;
   end if;
   return null;
@@ -44,14 +44,14 @@ security definer
 as $$
 begin
   if (TG_OP = 'DELETE') then
-    update public.forum_posts
+    update public.posts
     set reposts_count = reposts_count - 1
-    where id = OLD.post_id;
+    where post_id = OLD.post_id;
     return OLD;
   elsif (TG_OP = 'INSERT') then
-    update public.forum_posts
+    update public.posts
     set reposts_count = reposts_count + 1
-    where id = NEW.post_id;
+    where post_id = NEW.post_id;
     return NEW;
   end if;
   return null;

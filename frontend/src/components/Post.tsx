@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import socialApi from '../api/social';
 import { useAuth } from '../contexts/AuthContext';
+import { getRelativeTime } from '../utils/timeUtils';
 import {
   Box,
   HStack,
@@ -17,14 +18,19 @@ import {
   MenuList,
   MenuItem,
   Tooltip,
+  Button,
+  Grid,
+  GridItem,
 } from '@chakra-ui/react';
+import ImageModal from './ImageModal';
 import { useNavigate } from 'react-router-dom';
-import { FaHeart, FaRetweet, FaComment, FaShare } from 'react-icons/fa';
+import { FaHeart, FaRetweet, FaComment, FaShare, FaEllipsisV, FaEdit, FaTrash } from 'react-icons/fa';
 import { extractLinkPreviews, LinkPreview } from '../utils/linkPreview';
 
 interface PostProps {
   id: string;
   author: {
+    id: string;
     full_name: string;
     username: string;
     avatar_url: string;
@@ -36,6 +42,7 @@ interface PostProps {
   reposts_count: number;
   comments_count: number;
   timestamp: string;
+  onView?: () => void;
 }
 
 const Post = ({
@@ -47,12 +54,23 @@ const Post = ({
   reposts_count,
   comments_count,
   timestamp,
+  onView,
 }: PostProps) => {
   const [isLiked, setIsLiked] = useState(false);
+
+  useEffect(() => {
+    if (onView) {
+      onView();
+    }
+  }, [onView]);
   const [isReposted, setIsReposted] = useState(false);
   const [likesCount, setLikesCount] = useState(likes_count);
   const [repostsCount, setRepostsCount] = useState(reposts_count);
   const [linkPreviews, setLinkPreviews] = useState<LinkPreview[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(content);
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -68,15 +86,23 @@ const Post = ({
     };
 
     const fetchInteractionStatus = async () => {
-      if (user) {
-        try {
-          const { isLiked: likedStatus, isReposted: repostedStatus } = 
-            await socialApi.getInteractionStatus(id, user.id);
-          setIsLiked(likedStatus);
-          setIsReposted(repostedStatus);
-        } catch (error) {
-          console.error('Error fetching interaction status:', error);
-        }
+      if (!user || !id || typeof id !== 'string') {
+        return;
+      }
+      try {
+        const { isLiked: likedStatus, isReposted: repostedStatus } =
+          await socialApi.getInteractionStatus(id, user.id);
+        setIsLiked(likedStatus);
+        setIsReposted(repostedStatus);
+      } catch (error) {
+        console.error('Error fetching interaction status:', error);
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to fetch interaction status',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
       }
     };
 
@@ -84,6 +110,28 @@ const Post = ({
     fetchInteractionStatus();
   }, [content, id, user]);
   const handleLike = async () => {
+    if (!id) {
+      toast({
+        title: 'Error',
+        description: 'Post ID is required',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!id?.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Post ID is required',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
     if (!user) {
       toast({
         title: 'Authentication Required',
@@ -102,9 +150,10 @@ const Post = ({
         setLikesCount(newLikeState ? likesCount + 1 : likesCount - 1);
       }
     } catch (error) {
+      console.error('Error liking post:', error);
       toast({
         title: 'Error',
-        description: 'Failed to like post',
+        description: error instanceof Error ? error.message : 'Failed to like post',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -124,6 +173,28 @@ const Post = ({
       return;
     }
 
+    if (!id || typeof id !== 'string' || id.trim() === '') {
+      toast({
+        title: 'Error',
+        description: 'Post ID is required',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!id?.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Post ID is required',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
     try {
       const { success, isReposted: newRepostState } = await socialApi.toggleRepost(id, user.id);
       if (success) {
@@ -131,9 +202,10 @@ const Post = ({
         setRepostsCount(newRepostState ? repostsCount + 1 : repostsCount - 1);
       }
     } catch (error) {
+      console.error('Error reposting:', error);
       toast({
         title: 'Error',
-        description: 'Failed to repost',
+        description: error instanceof Error ? error.message : 'Failed to repost',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -177,6 +249,33 @@ const Post = ({
     }
   };
 
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!id) {
+      toast({
+        title: 'Error',
+        description: 'Post ID is required',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!id?.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Post ID is required',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    navigate(`/post/${id}`);
+  };
+
   return (
     <Box
       borderWidth="1px"
@@ -185,7 +284,7 @@ const Post = ({
       p={4}
       bg="white"
       _hover={{ shadow: 'md', cursor: 'pointer' }}
-      onClick={() => navigate(`/post/${id}`)}
+      onClick={handleClick}
     >
       <VStack align="stretch" spacing={4}>
         {/* Author Info */}
@@ -213,47 +312,205 @@ const Post = ({
             <Text color="gray.500">@{author.username}</Text>
           </VStack>
           <Text color="gray.500" fontSize="sm" ml="auto">
-            {timestamp}
+            {getRelativeTime(timestamp)}
           </Text>
+          {user?.id === author.id && (
+            <Menu>
+              <MenuButton
+                as={IconButton}
+                aria-label="Post options"
+                icon={<Icon as={FaEllipsisV} />}
+                variant="ghost"
+                size="sm"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <MenuList onClick={(e) => e.stopPropagation()}>
+                <MenuItem
+                  icon={<Icon as={FaEdit} />}
+                  onClick={() => {
+                    setIsEditing(true);
+                    setEditContent(content);
+                  }}
+                >
+                  Edit Post
+                </MenuItem>
+                <MenuItem
+                  icon={<Icon as={FaTrash} />}
+                  onClick={async () => {
+                    try {
+                      if (!id || typeof id !== 'string' || !id.trim()) {
+                        throw new Error('Invalid post ID');
+                      }
+
+                      if (!user) {
+                        throw new Error('User authentication required');
+                      }
+
+                      await socialApi.deletePost(id, user.id);
+                      toast({
+                        title: "Success",
+                        description: "Post deleted successfully",
+                        status: "success",
+                        duration: 3000,
+                        isClosable: true,
+                      });
+                      navigate("/");
+                    } catch (error) {
+                      console.error('Error deleting post:', error);
+                      toast({
+                        title: "Error",
+                        description: error instanceof Error ? error.message : "Failed to delete post",
+                        status: "error",
+                        duration: 3000,
+                        isClosable: true,
+                      });
+                    }
+                  }}
+                >
+                  Delete Post
+                </MenuItem>
+              </MenuList>
+            </Menu>
+          )}
         </HStack>
 
         {/* Post Content */}
-        <Text>
-          {content.split(/(https?:\/\/[^\s]+)/g).map((part, index) => {
-            if (part.match(/^https?:\/\//)) {
-              return (
-                <Link
-                  key={index}
-                  href={part}
-                  color="blue.500"
-                  isExternal
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {part}
-                </Link>
-              );
-            }
-            return part;
-          })}
-        </Text>
+        {isEditing ? (
+          <Box onClick={(e) => e.stopPropagation()}>
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              style={{
+                width: "100%",
+                minHeight: "100px",
+                padding: "8px",
+                marginBottom: "8px",
+                borderRadius: "4px",
+                border: "1px solid #E2E8F0",
+              }}
+            />
+            <HStack spacing={2}>
+              <Button
+                size="sm"
+                colorScheme="blue"
+                onClick={async () => {
+                  try {
+                    if (!id || typeof id !== 'string' || !id.trim()) {
+                      throw new Error('Invalid post ID');
+                    }
+
+                    if (!user) {
+                      throw new Error('User authentication required');
+                    }
+
+                    await socialApi.editPost(id, user.id, editContent);
+                    toast({
+                      title: "Success",
+                      description: "Post updated successfully",
+                      status: "success",
+                      duration: 3000,
+                      isClosable: true,
+                    });
+                    setIsEditing(false);
+                  } catch (error) {
+                    console.error('Error editing post:', error);
+                    toast({
+                      title: "Error",
+                      description: error instanceof Error ? error.message : "Failed to update post",
+                      status: "error",
+                      duration: 3000,
+                      isClosable: true,
+                    });
+                  }
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditContent(content);
+                }}
+              >
+                Cancel
+              </Button>
+            </HStack>
+          </Box>
+        ) : (
+          <Text>
+            {content.split(/(https?:\/\/[^\s]+)/g).map((part, index) => {
+              if (part.match(/^https?:\/\//)) {
+                return (
+                  <Link
+                    key={index}
+                    href={part}
+                    color="blue.500"
+                    isExternal
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {part}
+                  </Link>
+                );
+              }
+              return part;
+            })}
+          </Text>
+        )}
 
         {/* Media Content */}
         {media_urls && media_urls.length > 0 && (
           <Box borderRadius="md" overflow="hidden">
-            {media_urls.map((url, index) => (
-              <Box key={`${id}-media-${index}`}>
-                {url.match(/\.(jpg|jpeg|png|gif)$/i) ? (
-                  <Image src={url} alt="Post media" maxH="400px" objectFit="cover" w="100%" />
-                ) : url.match(/\.(mp4|webm|ogg)$/i) ? (
-                  <video
-                    controls
-                    style={{ width: '100%', maxHeight: '400px' }}
-                  >
-                    <source src={url} />
-                  </video>
-                ) : null}
-              </Box>
-            ))}
+            <Grid
+              templateColumns={media_urls.length === 1 ? '1fr' :
+                media_urls.length === 2 ? 'repeat(2, 1fr)' :
+                media_urls.length === 3 ? 'repeat(2, 1fr)' :
+                'repeat(2, 1fr)'}
+              gap={2}
+              templateRows={media_urls.length === 3 ? '200px 200px' : '200px'}
+              templateAreas={media_urls.length === 3 ?
+                `"img1 img2"
+                 "img3 img3"` :
+                undefined}
+            >
+              {media_urls.map((url, index) => (
+                <GridItem
+                  key={`${id}-media-${index}`}
+                  area={media_urls.length === 3 ? `img${index + 1}` : undefined}
+                >
+                  {url.match(/\.(jpg|jpeg|png|gif)$/i) ? (
+                    <Image
+                      src={url}
+                      alt="Post media"
+                      w="100%"
+                      h="100%"
+                      objectFit="cover"
+                      borderRadius="md"
+                      cursor="pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCurrentImageIndex(index);
+                        setIsImageModalOpen(true);
+                      }}
+                    />
+                  ) : url.match(/\.(mp4|webm|ogg)$/i) ? (
+                    <Box h="100%" position="relative">
+                      <video
+                        controls
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          borderRadius: '0.375rem'
+                        }}
+                      >
+                        <source src={url} />
+                      </video>
+                    </Box>
+                  ) : null}
+                </GridItem>
+              ))}
+            </Grid>
           </Box>
         )}
 
@@ -274,11 +531,11 @@ const Post = ({
                   overflow="hidden"
                   _hover={{ bg: 'gray.50' }}
                 >
-                  <HStack spacing={4} p={3}>
+                  <HStack spacing={4} p={3} align="start">
                     {preview.image && (
                       <Image 
                         src={preview.image} 
-                        alt={preview.title} 
+                        alt={preview.title}
                         boxSize="100px"
                         objectFit="cover"
                         borderRadius="md"
@@ -288,11 +545,13 @@ const Post = ({
                       <Text fontWeight="bold" noOfLines={2}>
                         {preview.title}
                       </Text>
-                      <Text fontSize="sm" color="gray.600" noOfLines={2}>
-                        {preview.description}
-                      </Text>
+                      {preview.description && (
+                        <Text fontSize="sm" color="gray.600" noOfLines={2}>
+                          {preview.description}
+                        </Text>
+                      )}
                       <Text fontSize="xs" color="gray.500">
-                        {new URL(preview.url).hostname}
+                        {preview.siteName || new URL(preview.url).hostname}
                       </Text>
                     </VStack>
                   </HStack>
@@ -373,6 +632,15 @@ const Post = ({
             </Menu>
           </HStack>
       </VStack>
+      {media_urls && media_urls.length > 0 && (
+        <ImageModal
+          isOpen={isImageModalOpen}
+          onClose={() => setIsImageModalOpen(false)}
+          images={media_urls.filter(url => url.match(/\.(jpg|jpeg|png|gif)$/i))}
+          currentIndex={currentImageIndex}
+          onIndexChange={setCurrentImageIndex}
+        />
+      )}
     </Box>
   );
 };

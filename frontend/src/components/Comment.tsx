@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { getRelativeTime } from '../utils/timeUtils';
 import { supabase } from '../lib/supabase';
 import {
   Box,
@@ -164,7 +165,7 @@ const Comment = ({
                   <Text color="gray.500">@{author?.username}</Text>
                 </HStack>
                 <Text color="gray.500" fontSize="sm">
-                  {timestamp}
+                  {getRelativeTime(timestamp)}
                 </Text>
               </HStack>
               <Text mb={2}>{content}</Text>

@@ -12,7 +12,9 @@ export interface Post {
   media_urls?: string[];
   created_at: string;
   updated_at: string;
-  author?: {
+  timestamp: string;
+  author: {
+    id: string;
     username: string;
     full_name: string;
     avatar_url: string;
@@ -40,7 +42,12 @@ const postsApi = {
 
       const posts = data.map(post => ({
         ...post,
-        author: post.profiles
+        timestamp: post.created_at,
+        media_urls: post.media_url,
+        author: {
+          id: post.user_id,
+          ...post.profiles
+        }
       }));
 
       return {
@@ -53,14 +60,23 @@ const postsApi = {
     }
   },
 
-  createPost: async (content: string, userId: string, media_urls: string[] = []): Promise<Post> => {
+  createPost: async (content: string, userId: string, media_url: string[] = []): Promise<Post> => {
     try {
+      // Validate required fields
+      if (!content?.trim()) {
+        throw new Error('Post content is required');
+      }
+      if (!userId) {
+        throw new Error('User must be authenticated to create a post');
+      }
+
+      // Create the post
       const { data, error } = await supabase
         .from('posts')
         .insert([{
-          content,
+          content: content.trim(),
           user_id: userId,
-          media_urls
+          media_url: media_url.filter(url => url?.trim())
         }])
         .select(`
           *,
@@ -68,7 +84,20 @@ const postsApi = {
         `)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        if (error.code === '23503') { // Foreign key violation
+          throw new Error('Invalid user account');
+        } else if (error.code === '23502') { // Not null violation
+          throw new Error('Missing required fields');
+        } else {
+          throw new Error(`Database error: ${error.message}`);
+        }
+      }
+
+      if (!data) {
+        throw new Error('No data returned after creating post');
+      }
 
       return {
         ...data,
@@ -76,7 +105,7 @@ const postsApi = {
       };
     } catch (error) {
       console.error('Error creating post:', error);
-      throw new Error('Failed to create post');
+      throw error instanceof Error ? error : new Error('Failed to create post');
     }
   },
 

@@ -11,6 +11,12 @@ const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm'];
 
 export const uploadMedia = async (file: File): Promise<UploadedMedia> => {
   try {
+    // Check authentication status
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    if (authError || !session) {
+      throw new Error('Authentication required. Please sign in to upload media.');
+    }
+
     // Validate file size
     if (file.size > MAX_FILE_SIZE) {
       throw new Error(`File size exceeds maximum limit of ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
@@ -23,13 +29,7 @@ export const uploadMedia = async (file: File): Promise<UploadedMedia> => {
 
     const fileExt = file.name.split('.').pop();
     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `${Date.now()}_${fileName}`;
-
-    // Check if bucket exists and is accessible
-    const { error: bucketError } = await supabase.storage.getBucket('post-media');
-    if (bucketError) {
-      throw new Error('Storage bucket is not accessible. Please try again later.');
-    }
+    const filePath = `${session.user.id}/${Date.now()}_${fileName}`;
 
     // Upload file to Supabase storage
     const { error: uploadError, data: uploadData } = await supabase.storage
