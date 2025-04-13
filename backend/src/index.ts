@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import postsRouter from './routes/posts';
+import linkPreviewRouter from './routes/linkPreview';
 
 // Load environment variables before any other code
 dotenv.config();
@@ -20,6 +21,9 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Mount API routes
+app.use('/api/link-preview', linkPreviewRouter);
+
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_ANON_KEY || '';
@@ -33,6 +37,21 @@ app.post('/auth/signup', async (req: express.Request, res: express.Response) => 
   const usernameRegex = /^[a-z0-9_]+$/;
   if (!usernameRegex.test(username)) {
     return res.status(400).json({ error: 'Invalid username. Only lowercase letters, numbers, and underscores are allowed.' });
+  }
+
+  // Check if username already exists
+  const { data: existingUser, error: usernameError } = await supabase
+    .from('profiles')
+    .select('username')
+    .eq('username', username)
+    .single();
+
+  if (usernameError && usernameError.code !== 'PGRST116') {
+    return res.status(500).json({ error: 'Error checking username availability' });
+  }
+
+  if (existingUser) {
+    return res.status(400).json({ error: 'Username is already taken' });
   }
 
   try {
@@ -102,6 +121,7 @@ app.post('/auth/forgot-password', async (req: express.Request, res: express.Resp
 
 // Mount routes
 app.use('/api/posts', postsRouter);
+app.use('/api/link-preview', linkPreviewRouter);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);

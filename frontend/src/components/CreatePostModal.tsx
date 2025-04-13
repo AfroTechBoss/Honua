@@ -251,19 +251,31 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }: CreatePostModalProp
 
     try {
       // Upload media files first
-      const mediaUrls = [];
+      const mediaUrl: string[] = [];
       for (const mediaItem of media) {
         if (mediaItem.file) {
           const { uploadMedia } = await import('../utils/mediaUpload');
           const uploadedMedia = await uploadMedia(mediaItem.file);
-          mediaUrls.push(uploadedMedia.url);
+          mediaUrl.push(uploadedMedia.url);
         } else if (mediaItem.type === 'link') {
-          mediaUrls.push(mediaItem.url);
+          mediaUrl.push(mediaItem.url);
         }
       }
 
+      // Check authentication
+      if (!user?.id) {
+        toast({
+          title: 'Authentication Required',
+          description: 'Please sign in to create a post',
+          status: 'warning',
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+      }
+
       // Create post with media URLs
-      const createdPost = await postsApi.createPost(content, user?.id || '', mediaUrls);
+      const createdPost = await postsApi.createPost(content, user.id, mediaUrl);
       toast({
         title: 'Success',
         description: 'Post created successfully',
@@ -291,9 +303,10 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }: CreatePostModalProp
       onClose();
     } catch (error) {
       console.error('Error creating post:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create post';
       toast({
         title: 'Error',
-        description: 'Failed to create post',
+        description: errorMessage,
         status: 'error',
         duration: 3000,
         isClosable: true,

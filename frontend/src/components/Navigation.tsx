@@ -98,7 +98,7 @@ const Navigation = () => {
     <VStack spacing={2} align="stretch" width="full">
       <Button
         as={RouterLink}
-        to="/profile"
+        to={profile?.username ? `/${profile.username}` : '/profile'}
         variant="ghost"
         justifyContent="flex-start"
         py={6}
@@ -135,7 +135,7 @@ const Navigation = () => {
         notifications={notifications.messages}
       />
       <NavItem icon={FaBookmark} label="Bookmarks" to="/bookmarks" />
-      <NavItem icon={FaUser} label="Profile" to="/profile" />
+      <NavItem icon={FaUser} label="Profile" to={profile?.username ? `/${profile.username}` : '/profile'} />
       <NavItem icon={FaCog} label="Settings" to="/settings" />
     </VStack>
   );

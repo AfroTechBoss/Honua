@@ -26,24 +26,24 @@ const socialApi = {
   // Like/Unlike a post
   toggleLike: async (postId: string, userId: string): Promise<{ success: boolean; isLiked: boolean }> => {
     try {
-      // First check if the post exists in posts table
+      if (!postId || !userId) {
+        throw new Error('Post ID and User ID are required');
+      }
+
+      // Check if the post exists in posts table
       const { data: post, error: postError } = await supabase
         .from('posts')
-        .select('id')
-        .eq('id', postId)
+        .select('post_id')
+        .eq('post_id', postId)
         .single();
 
-      // If not found in posts table, check forum_posts table
-      if (postError || !post) {
-        const { data: forumPost, error: forumPostError } = await supabase
-          .from('forum_posts')
-          .select('id')
-          .eq('id', postId)
-          .single();
+      if (postError) {
+        console.error('Error checking post existence:', postError);
+        throw new Error('Failed to verify post existence');
+      }
 
-        if (forumPostError || !forumPost) {
-          throw new Error('Post not found');
-        }
+      if (!post) {
+        throw new Error('Post not found');
       }
 
       const { data: existingLike } = await supabase
@@ -74,31 +74,27 @@ const socialApi = {
       }
     } catch (error) {
       console.error('Error toggling like:', error);
-      throw new Error('Failed to toggle like');
+      throw error instanceof Error ? error : new Error('Failed to toggle like');
     }
   },
 
   // Repost/Unrepost a post
   toggleRepost: async (postId: string, userId: string): Promise<{ success: boolean; isReposted: boolean }> => {
     try {
-      // First check if the post exists in posts table
+      // Check if the post exists in posts table
       const { data: post, error: postError } = await supabase
         .from('posts')
-        .select('id')
-        .eq('id', postId)
+        .select('post_id')
+        .eq('post_id', postId)
         .single();
 
-      // If not found in posts table, check forum_posts table
-      if (postError || !post) {
-        const { data: forumPost, error: forumPostError } = await supabase
-          .from('forum_posts')
-          .select('id')
-          .eq('id', postId)
-          .single();
+      if (postError) {
+        console.error('Error checking post existence:', postError);
+        throw new Error('Failed to verify post existence');
+      }
 
-        if (forumPostError || !forumPost) {
-          throw new Error('Post not found');
-        }
+      if (!post) {
+        throw new Error('Post not found');
       }
 
       const { data: existingRepost } = await supabase
@@ -165,7 +161,27 @@ const socialApi = {
   // Get post interaction status for current user
   getInteractionStatus: async (postId: string, userId: string): Promise<{ isLiked: boolean; isReposted: boolean }> => {
     try {
-      const [{ data: likes }, { data: reposts }] = await Promise.all([
+      if (!postId || !userId) {
+        throw new Error('Post ID and User ID are required for checking interaction status');
+      }
+
+      // Check if the post exists in posts table
+      const { data: post, error: postError } = await supabase
+        .from('posts')
+        .select('post_id')
+        .eq('post_id', postId)
+        .single();
+
+      if (postError) {
+        console.error('Error checking post existence:', postError);
+        throw new Error(`Failed to verify post existence: ${postError.message}`);
+      }
+
+      if (!post) {
+        throw new Error(`Post with ID ${postId} not found`);
+      }
+
+      const [likesResponse, repostsResponse] = await Promise.all([
         supabase
           .from('post_likes')
           .select('*')
@@ -178,13 +194,23 @@ const socialApi = {
           .eq('user_id', userId)
       ]);
 
+      if (likesResponse.error) {
+        console.error('Error checking likes:', likesResponse.error);
+        throw new Error(`Failed to check like status: ${likesResponse.error.message}`);
+      }
+
+      if (repostsResponse.error) {
+        console.error('Error checking reposts:', repostsResponse.error);
+        throw new Error(`Failed to check repost status: ${repostsResponse.error.message}`);
+      }
+
       return {
-        isLiked: Boolean(likes && likes.length > 0),
-        isReposted: Boolean(reposts && reposts.length > 0)
+        isLiked: Boolean(likesResponse.data && likesResponse.data.length > 0),
+        isReposted: Boolean(repostsResponse.data && repostsResponse.data.length > 0)
       };
     } catch (error) {
       console.error('Error getting interaction status:', error);
-      throw new Error('Failed to get interaction status');
+      throw error instanceof Error ? error : new Error('Failed to get interaction status');
     }
   },
 
@@ -192,6 +218,83 @@ const socialApi = {
   sharePost: async (postId: string): Promise<{ url: string }> => {
     const shareUrl = `${window.location.origin}/post/${postId}`;
     return { url: shareUrl };
+  },
+
+  // Edit post
+  editPost: async (postId: string, userId: string, content: string): Promise<{ success: boolean }> => {
+    try {
+      const { data: post, error: postError } = await supabase
+        .from('posts')
+        .select('user_id')
+        .eq('post_id', postId)
+        .single();
+
+      if (postError || !post) {
+        throw new Error('Post not found');
+      }
+
+      if (post.user_id !== userId) {
+        throw new Error('Unauthorized to edit this post');
+      }
+
+      const { error } = await supabase
+        .from('posts')
+        .update({ content, updated_at: new Date().toISOString() })
+        .eq('post_id', postId);
+
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Error editing post:', error);
+      throw error instanceof Error ? error : new Error('Failed to edit post');
+    }
+  },
+
+  // Delete post
+  deletePost: async (postId: string, userId: string): Promise<{ success: boolean }> => {
+    try {
+      // Basic validation for required fields
+      if (!postId?.trim()) {
+        throw new Error('Post ID is required');
+      }
+      if (!userId?.trim()) {
+        throw new Error('User ID is required');
+      }
+      // First check if the post exists and belongs to the user
+      const { data: post, error: postError } = await supabase
+        .from('posts')
+        .select('user_id')
+        .eq('post_id', postId)
+        .single();
+
+      if (postError) {
+        throw new Error(`Failed to check post existence: ${postError.message}`);
+      }
+
+      if (!post) {
+        throw new Error(`Post with ID ${postId} not found`);
+      }
+
+      if (post.user_id !== userId) {
+        throw new Error('You are not authorized to delete this post');
+      }
+
+      // Proceed with deletion if all checks pass
+      const { error: deleteError } = await supabase
+        .from('posts')
+        .delete()
+        .eq('post_id', postId)
+        .eq('user_id', userId);
+
+      if (deleteError) {
+        throw new Error(`Failed to delete post: ${deleteError.message}`);
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting post:', error);
+      throw error instanceof Error ? error : new Error('Failed to delete post');
+    }
   }
 };
 

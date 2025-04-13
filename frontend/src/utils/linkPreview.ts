@@ -21,37 +21,72 @@ export const extractLinkPreviews = async (content: string): Promise<LinkPreview[
     const previews = await Promise.all(
       uniqueUrls.map(async (url) => {
         try {
-          const response = await fetch(`${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}`);
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          const response = await fetch(`${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}`, {
+            headers: {
+              'Accept': 'application/json',
+              'Cache-Control': 'no-cache'
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
           const preview = await response.json();
-          
-          return {
-            url: preview.url,
-            title: preview.title,
-            description: preview.description || '',
-            image: preview.image,
-            siteName: preview.siteName
-          } as LinkPreview;
+          if (!preview || typeof preview !== 'object') {
+            throw new Error('Invalid preview data structure');
+          }
+
+          // Extract domain for better fallback information
+          const urlObj = new URL(url);
+          const domain = urlObj.hostname;
+          const siteName = domain.split('.').slice(-2, -1)[0] || domain;
+          const formattedSiteName = siteName.charAt(0).toUpperCase() + siteName.slice(1);
+
+          // Validate and enhance preview data with improved fallbacks
+          const validatedPreview: LinkPreview = {
+            url: preview.url || url,
+            title: preview.title || formattedSiteName,
+            description: preview.description || `View content from ${domain}`,
+            image: preview.image || undefined,
+            siteName: preview.siteName || domain
+          };
+
+          // Ensure all required fields have meaningful values
+          if (!validatedPreview.title.trim()) {
+            validatedPreview.title = formattedSiteName;
+          }
+          if (!validatedPreview.description.trim()) {
+            validatedPreview.description = `View content from ${domain}`;
+          }
+
+          return validatedPreview;
         } catch (error) {
           console.error(`Error fetching preview for ${url}:`, error);
-          // Return basic URL info on error
+          
           try {
             const urlObj = new URL(url);
+            const domain = urlObj.hostname;
+            const siteName = domain.split('.').slice(-2, -1)[0] || domain;
+            const formattedSiteName = siteName.charAt(0).toUpperCase() + siteName.slice(1);
+            
+            // Return enhanced fallback preview with more meaningful information
             return {
               url,
-              title: urlObj.hostname,
-              description: '',
+              title: formattedSiteName,
+              description: `Content preview from ${domain}`,
               image: undefined,
-              siteName: urlObj.hostname
+              siteName: domain
             };
-          } catch {
+          } catch (urlError) {
+            console.error(`Invalid URL format: ${url}`, urlError);
             return null;
           }
         }
       })
     );
 
-    return previews.filter((preview): preview is LinkPreview => preview !== null);
+    return previews.filter((preview: LinkPreview | null): preview is LinkPreview => preview !== null);
   } catch (error) {
     console.error('Error extracting link previews:', error);
     return [];

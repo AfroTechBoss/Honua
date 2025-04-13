@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -18,10 +18,48 @@ import {
   Select,
   useColorModeValue,
   Heading,
+  useToast,
 } from '@chakra-ui/react';
 import { FaSearch, FaFire, FaHashtag } from 'react-icons/fa';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInView } from 'react-intersection-observer';
 import Navigation from '../components/Navigation';
 import Post from '../components/Post';
+import { useAuth } from '../contexts/AuthContext';
+import React from 'react';
+
+interface Post {
+  post_id: string;
+  content: string;
+  image_urls: string[];
+  video_urls: string[];
+  poll_id: string | null;
+  likes_count: number;
+  comments_count: number;
+  reposts_count: number;
+  save_count: number;
+  view_count: number;
+  trending_score: number;
+  content_score: number;
+  category: string[];
+  created_at: string;
+  user: {
+    id: string;
+    username: string;
+    avatar_url: string;
+    full_name: string;
+  };
+}
+
+interface ExploreFeedResponse {
+  status: string;
+  data: Post[];
+  pagination: {
+    page: number;
+    limit: number;
+    offset: number;
+  };
+}
 
 interface TrendingTopic {
   id: string;
@@ -43,13 +81,87 @@ interface SuggestedUser {
   bio: string;
 }
 
+const POSTS_PER_PAGE = 20;
+
 const Explore = () => {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('latest');
+  const [selectedFilter, setSelectedFilter] = useState('trending');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedTimeframe, setSelectedTimeframe] = useState('7d');
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
+  const toast = useToast();
+  const { ref, inView } = useInView();
+  
+  // Track post views
+  const viewedPosts = useRef<Set<string>>(new Set());
 
-  // Mock data - Replace with API calls
+  const fetchExploreFeed = async ({ pageParam = 0 }) => {
+    const response = await fetch(
+      `/api/explore?page=${pageParam}&limit=${POSTS_PER_PAGE}&filter=${selectedFilter}&category=${selectedCategory}&timeframe=${selectedTimeframe}&search=${searchQuery}&user_id=${user?.id || ''}`
+    );
+    if (!response.ok) throw new Error('Network response was not ok');
+    return response.json() as Promise<ExploreFeedResponse>;
+  };
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    status,
+    error,
+    refetch
+  } = useInfiniteQuery({
+    queryKey: ['exploreFeed', selectedFilter, selectedCategory, selectedTimeframe, searchQuery],
+    queryFn: ({ pageParam }) => fetchExploreFeed({ pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const nextPage = lastPage.pagination.page + 1;
+      return lastPage.data.length === POSTS_PER_PAGE ? nextPage : undefined;
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+  const updateEngagementMetrics = useCallback(async (postId: string, metricType: string, value: number) => {
+    try {
+      await fetch('/api/explore/engagement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: postId, metric_type: metricType, value })
+      });
+    } catch (error) {
+      console.error('Failed to update engagement metrics:', error);
+      toast({
+        title: 'Error updating engagement',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  }, [toast]);
+
+  // Handle post view tracking
+  const handlePostView = useCallback((postId: string) => {
+    if (!viewedPosts.current.has(postId)) {
+      viewedPosts.current.add(postId);
+      updateEngagementMetrics(postId, 'view', 1);
+    }
+  }, [updateEngagementMetrics]);
+
+  // Load more posts when reaching the bottom
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  // Refetch when filter or search changes
+  useEffect(() => {
+    refetch();
+  }, [selectedFilter, searchQuery, refetch]);
+
   const trendingTopics: TrendingTopic[] = [
     { id: '1', name: 'Technology', postCount: 1234 },
     { id: '2', name: 'Climate', postCount: 890 },
@@ -80,37 +192,6 @@ const Explore = () => {
     },
   ];
 
-  // Mock posts data
-  const posts = [
-    {
-      id: '1',
-      author: {
-        name: 'Alice Johnson',
-        username: 'alice_tech',
-        avatar: 'https://bit.ly/alice-avatar',
-      },
-      content: 'Just launched my new AI project! #Technology #Innovation',
-      likes: 42,
-      reposts: 12,
-      comments: 8,
-      timestamp: '2h ago',
-    },
-    {
-      id: '2',
-      author: {
-        name: 'Bob Smith',
-        username: 'bob_creates',
-        avatar: 'https://bit.ly/bob-avatar',
-      },
-      content: 'Check out my latest digital art piece! #Art #Digital',
-      media: [{ type: 'image' as const, url: 'https://bit.ly/art-preview' }],
-      likes: 128,
-      reposts: 24,
-      comments: 16,
-      timestamp: '4h ago',
-    },
-  ];
-
   return (
     <Container maxW="container.xl" py={4}>
       <Grid templateColumns={{ base: '1fr', md: '1fr 3fr 1fr' }} gap={6}>
@@ -118,6 +199,45 @@ const Explore = () => {
         <GridItem display={{ base: 'none', md: 'block' }}>
           <Box position="sticky" top={4}>
             <Navigation />
+            <VStack spacing={4} mt={8} align="stretch">
+              <Box p={4} bg={bgColor} borderRadius="lg" borderWidth="1px">
+                <Heading size="sm" mb={4}>Filters</Heading>
+                <VStack spacing={3} align="stretch">
+                  <Select
+                    value={selectedFilter}
+                    onChange={(e) => setSelectedFilter(e.target.value)}
+                    placeholder="Sort by"
+                  >
+                    <option value="trending">Trending</option>
+                    <option value="engagement">Most Engaging</option>
+                    <option value="quality">Highest Quality</option>
+                    <option value="latest">Latest</option>
+                  </Select>
+                  
+                  <Select
+                    value={selectedTimeframe}
+                    onChange={(e) => setSelectedTimeframe(e.target.value)}
+                    placeholder="Time Range"
+                  >
+                    <option value="24h">Last 24 Hours</option>
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d">Last 30 Days</option>
+                  </Select>
+
+                  <Select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    placeholder="All Categories"
+                  >
+                    {categories.map(category => (
+                      <option key={category.id} value={category.name.toLowerCase()}>
+                        {category.icon} {category.name}
+                      </option>
+                    ))}
+                  </Select>
+                </VStack>
+              </Box>
+            </VStack>
           </Box>
         </GridItem>
 
@@ -152,11 +272,49 @@ const Explore = () => {
             </Box>
 
             {/* Posts */}
-            <VStack spacing={4} align="stretch">
-              {posts.map((post) => (
-                <Post key={post.id} {...post} />
-              ))}
-            </VStack>
+            {status === 'error' ? (
+              <Box p={4} bg="red.100" color="red.900" borderRadius="md">
+                Error: {(error as Error).message}
+              </Box>
+            ) : (
+              <VStack spacing={4} align="stretch">
+                {data?.pages.map((page, i) => (
+                  <React.Fragment key={i}>
+                    {page.data.map((post: Post) => (
+                      <Post
+                        key={post.post_id}
+                        id={post.post_id}
+                        author={{
+                          id: post.user.id,
+                          full_name: post.user.full_name,
+                          username: post.user.username,
+                          avatar_url: post.user.avatar_url,
+                        }}
+                        content={post.content}
+                        media_urls={[
+                          ...post.image_urls,
+                          ...post.video_urls
+                        ]}
+                        likes_count={post.likes_count}
+                        reposts_count={post.reposts_count}
+                        comments_count={post.comments_count}
+                        timestamp={new Date(post.created_at).toLocaleString()}
+                        onView={() => handlePostView(post.post_id)}
+                      />
+                    ))}
+                  </React.Fragment>
+                ))}
+              </VStack>
+            )}
+            
+            {/* Load more trigger */}
+            <Box ref={ref} h="10" mt={4}>
+              {isFetchingNextPage && (
+                <HStack justify="center">
+                  <Text>Loading more posts...</Text>
+                </HStack>
+              )}
+            </Box>
           </VStack>
         </GridItem>
 
