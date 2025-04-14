@@ -251,10 +251,13 @@ const Post = ({
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!id) {
+    e.stopPropagation();
+    
+    // Validate post ID
+    if (!id || typeof id !== 'string' || !id.trim()) {
       toast({
         title: 'Error',
-        description: 'Post ID is required',
+        description: 'Invalid post ID',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -262,10 +265,11 @@ const Post = ({
       return;
     }
 
-    if (!id?.trim()) {
+    // Validate author information
+    if (!author?.username || typeof author.username !== 'string' || !author.username.trim()) {
       toast({
         title: 'Error',
-        description: 'Post ID is required',
+        description: 'Invalid author information',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -273,7 +277,8 @@ const Post = ({
       return;
     }
 
-    navigate(`/post/${id}`);
+    // Navigate to the post detail page
+    navigate(`/${author.username}/post/${id}`, { state: { from: 'feed' } });
   };
 
   return (
@@ -338,15 +343,23 @@ const Post = ({
                   icon={<Icon as={FaTrash} />}
                   onClick={async () => {
                     try {
-                      if (!id || typeof id !== 'string' || !id.trim()) {
-                        throw new Error('Invalid post ID');
+                      // Validate post ID and user authentication
+                      if (!id) {
+                        throw new Error('Post ID is required');
                       }
 
-                      if (!user) {
+                      const postId = String(id).trim();
+                      if (!postId) {
+                        throw new Error('Post ID cannot be empty');
+                      }
+
+                      if (!user?.id) {
                         throw new Error('User authentication required');
                       }
 
-                      await socialApi.deletePost(id, user.id);
+                      // Attempt to delete the post
+                      await socialApi.deletePost(postId, user.id);
+                      
                       toast({
                         title: "Success",
                         description: "Post deleted successfully",
@@ -354,6 +367,7 @@ const Post = ({
                         duration: 3000,
                         isClosable: true,
                       });
+                      
                       navigate("/");
                     } catch (error) {
                       console.error('Error deleting post:', error);
@@ -378,6 +392,8 @@ const Post = ({
         {isEditing ? (
           <Box onClick={(e) => e.stopPropagation()}>
             <textarea
+              id="edit-post-content"
+              name="post-content"
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
               style={{

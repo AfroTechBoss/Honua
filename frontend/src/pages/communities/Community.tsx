@@ -3,6 +3,8 @@ import { useParams, Link as RouterLink } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Database } from '../../types/supabase';
 import { ForumPostWithAuthor } from '../../types/forum';
+import { useAuth } from '../../contexts/AuthContext';
+import communityApi from '../../api/community';
 import {
   Box,
   Container,
@@ -36,13 +38,26 @@ export default function Community() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMember, setIsMember] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
-    if (communityName) {
+    if (communityName && user) {
       fetchCommunityDetails();
       checkMembership();
+      checkAdminStatus();
     }
-  }, [communityName]);
+  }, [communityName, user]);
+
+  const checkAdminStatus = async () => {
+    if (!community?.id || !user?.id) return;
+    try {
+      const role = await communityApi.getUserRole(community.id, user.id);
+      setIsAdmin(role === 'admin');
+    } catch (err) {
+      console.error('Error checking admin status:', err);
+    }
+  };
 
   useEffect(() => {
     if (community) {
@@ -93,9 +108,20 @@ export default function Community() {
       let query = supabase
         .from('forum_posts')
         .select(`
-          *,
-          author:author_id(username),
-          comments:comment_count
+          id,
+          title,
+          content,
+          media_url,
+          created_at,
+          updated_at,
+          author_id,
+          community_id,
+          karma_score,
+          comment_count,
+          post_type,
+          is_pinned,
+          is_locked,
+          author:profiles!author_id(username)
         `)
         .eq('community_id', community.id);
 
@@ -113,7 +139,10 @@ export default function Community() {
 
       const { data, error } = await query;
       if (error) throw error;
-      setPosts(data || []);
+      setPosts(data?.map(post => ({
+        ...post,
+        author: post.author?.[0] || null
+      })) || []);
     } catch (err) {
       console.error('Error fetching posts:', err);
     }
@@ -210,7 +239,7 @@ export default function Community() {
                       <Text fontSize="sm" color="gray.500">
                         {community.member_count} members
                       </Text>
-                      {!isMember && (
+                      {!isMember && !isAdmin && (
                         <Button
                           onClick={handleJoinCommunity}
                           colorScheme="brand"
@@ -218,6 +247,17 @@ export default function Community() {
                           borderRadius="full"
                         >
                           Join Community
+                        </Button>
+                      )}
+                      {isAdmin && (
+                        <Button
+                          as={RouterLink}
+                          to={`/communities/${community.name}/edit`}
+                          colorScheme="brand"
+                          size="md"
+                          borderRadius="full"
+                        >
+                          Edit Community
                         </Button>
                       )}
                     </HStack>
@@ -313,7 +353,7 @@ export default function Community() {
                   <Box flex="1">
                     <Link
                       as={RouterLink}
-                      to={`/communities/${community.name}/posts/${post.id}`}
+                      to={`/communities/${communityName}/posts/${post.id}`}
                       fontSize="xl"
                       fontWeight="semibold"
                       _hover={{ color: 'brand.500' }}
@@ -329,21 +369,51 @@ export default function Community() {
                         {post.content}
                       </Text>
                     )}
-                    {post.media_url && post.media_url.length > 0 && (
+                    {post.media_url && (
                       <Box mt={2}>
-                        <Image
-                          src={post.media_url[0]}
-                          alt="Post media"
-                          maxH="96"
-                          objectFit="contain"
-                          borderRadius="lg"
-                        />
+                        <Grid templateColumns={`repeat(${Math.min(2, (post.media_url || []).length)}, 1fr)`} gap={2}>
+                          {(post.media_url || []).slice(0, 4).map((url: string, index: number) => (
+                            <Box
+                              key={index}
+                              position="relative"
+                              height="200px"
+                              gridColumn={post.media_url && post.media_url.length === 1 ? "span 2" : "auto"}
+                            >
+                              <Image
+                                src={url}
+                                alt={`Post media ${index + 1}`}
+                                w="100%"
+                                h="100%"
+                                objectFit="cover"
+                                borderRadius="lg"
+                              />
+                              {index === 3 && post.media_url && post.media_url.length > 4 && (
+                                <Box
+                                  position="absolute"
+                                  top={0}
+                                  left={0}
+                                  right={0}
+                                  bottom={0}
+                                  bg="blackAlpha.600"
+                                  display="flex"
+                                  alignItems="center"
+                                  justifyContent="center"
+                                  borderRadius="lg"
+                                >
+                                  <Text color="white" fontSize="xl" fontWeight="bold">
+                                    +{post.media_url.length - 4}
+                                  </Text>
+                                </Box>
+                              )}
+                            </Box>
+                          ))}
+                        </Grid>
                       </Box>
                     )}
                     <HStack mt={4} spacing={4} color="gray.500" fontSize="sm">
                       <Link
                         as={RouterLink}
-                        to={`/communities/${community.name}/posts/${post.id}`}
+                        to={`/communities/${communityName}/post/${post.id}`}
                         display="flex"
                         alignItems="center"
                         _hover={{ color: 'brand.500' }}
