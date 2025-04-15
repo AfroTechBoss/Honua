@@ -10,8 +10,8 @@ export interface UserProfile {
 }
 
 export interface Post {
-  id: string;
-  author_id: string;
+  post_id: string;
+  user_id: string;
   content: string;
   created_at: string;
   likes_count: number;
@@ -152,17 +152,17 @@ export const userService = {
 
   async getUserPosts(userId: string): Promise<Post[]> {
     const { data: posts, error } = await supabase
-      .from('forum_posts')
+      .from('posts')
       .select(`
-        id,
-        author_id,
+        post_id,
+        user_id,
         content,
         created_at,
-        karma_score as likes_count,
-        comment_count as comments_count,
-        repost_count as reposts_count
+        likes_count,
+        comments_count,
+        reposts_count
       `)
-      .eq('author_id', userId)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
