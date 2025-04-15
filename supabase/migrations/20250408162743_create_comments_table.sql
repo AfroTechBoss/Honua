@@ -4,7 +4,7 @@ create table if not exists public.comments (
     content text not null,
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    user_id uuid references auth.users not null,
+    user_id uuid not null references public.profiles(id) on delete cascade,
     post_id uuid references public.posts(post_id) on delete cascade,
     parent_id uuid references public.comments(comment_id) on delete cascade,
     karma_score bigint default 0,
@@ -14,7 +14,7 @@ create table if not exists public.comments (
 -- Create comment_votes table for tracking upvotes/downvotes
 create table if not exists public.comment_votes (
     comment_id uuid references public.comments(comment_id) on delete cascade,
-    user_id uuid references auth.users not null,
+    user_id uuid not null references public.profiles(id) on delete cascade,
     vote_type smallint check (vote_type in (-1, 1)),
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     primary key (comment_id, user_id)

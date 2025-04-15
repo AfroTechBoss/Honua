@@ -16,18 +16,21 @@ import Comment from '../components/Comment';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Comment {
-  id: string;
+  comment_id: string;
   content: string;
   created_at: string;
+  updated_at?: string;
   user_id: string;
   post_id: string;
   parent_id?: string;
-  author?: {
+  karma_score: number;
+  is_edited: boolean;
+  timestamp?: string;
+  profiles: {
     username: string;
     full_name: string;
     avatar_url: string;
-  };
-  likes_count: number;
+  }[];
 }
 
 export default function SinglePost() {
@@ -98,8 +101,15 @@ export default function SinglePost() {
         const { data: commentsData, error: commentsError } = await supabase
           .from('comments')
           .select(`
-            *,
-            profiles:user_id (username, full_name, avatar_url)
+            comment_id,
+            content,
+            created_at,
+            user_id,
+            post_id,
+            parent_id,
+            karma_score,
+            is_edited,
+            profiles!user_id(username, full_name, avatar_url)
           `)
           .eq('post_id', id)
           .order('created_at', { ascending: true });
@@ -113,9 +123,17 @@ export default function SinglePost() {
         });
         
         setComments(commentsData.map((comment: any) => ({
-          ...comment,
-          author: comment.profiles,
-          timestamp: new Date(comment.created_at).toLocaleString()
+          comment_id: comment.comment_id,
+          content: comment.content,
+          created_at: comment.created_at,
+          updated_at: comment.updated_at || comment.created_at,
+          user_id: comment.user_id,
+          post_id: comment.post_id,
+          parent_id: comment.parent_id || undefined,
+          karma_score: comment.karma_score,
+          is_edited: comment.is_edited,
+          timestamp: new Date(comment.created_at).toLocaleString(),
+          profiles: comment.profiles
         })));
       } catch (err) {
         console.error('Error fetching post details:', err);
@@ -149,7 +167,14 @@ export default function SinglePost() {
           content
         }])
         .select(`
-          *,
+          comment_id,
+          content,
+          created_at,
+          user_id,
+          post_id,
+          parent_id,
+          karma_score,
+          is_edited,
           profiles:user_id (username, full_name, avatar_url)
         `)
         .single();
@@ -158,7 +183,7 @@ export default function SinglePost() {
 
       setComments([...comments, {
         ...newComment,
-        author: newComment.profiles,
+        updated_at: newComment.created_at,
         timestamp: new Date(newComment.created_at).toLocaleString()
       }]);
     } catch (err) {
@@ -203,12 +228,12 @@ export default function SinglePost() {
           <VStack mt={8} spacing={4} align="stretch">
             {comments.map((comment) => (
               <Comment
-                key={comment.id}
-                id={comment.id}
-                author={comment.author}
+                key={comment.comment_id}
+                id={comment.comment_id}
+                author={comment.profiles[0]}
                 content={comment.content}
                 timestamp={new Date(comment.created_at).toLocaleString()}
-                likes_count={comment.likes_count}
+                likes_count={comment.karma_score}
                 parent_id={comment.parent_id}
               />
             ))}

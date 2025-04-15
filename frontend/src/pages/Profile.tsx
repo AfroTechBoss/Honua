@@ -51,7 +51,8 @@ const Profile = () => {
   const [isFollowing, setIsFollowing] = useState(false);
   const [profileStats, setProfileStats] = useState<ProfileStats>({ followers_count: 0, following_count: 0 });
   interface Post {
-  id: string;
+  post_id: string;
+  user_id: string;
   content: string;
   created_at: string;
   likes_count: number;
@@ -315,28 +316,31 @@ const [userPosts, setUserPosts] = useState<Post[]>([]);
 
               <TabPanels>
                 <TabPanel px={0}>
-                  <VStack spacing={4} align="stretch">
-                    {userPosts.length > 0 ? (
-                      userPosts.map(post => (
-                        <Post
-                          key={post.id}
-                          id={post.id}
-                          author={{
-                            full_name: profile.full_name,
-                            username: profile.username,
-                            avatar_url: profile.avatar_url || ''
-                          }}
-                          content={post.content}
-                          timestamp={new Date(post.created_at).toLocaleString()}
-                          likes_count={post.likes_count}
-                          reposts_count={post.reposts_count}
-                          comments_count={post.comments_count}
-                        />
-                      ))
-                    ) : (
-                      <Text color="gray.500">No posts yet</Text>
-                    )}
-                  </VStack>
+                  <Box maxH="600px" overflowY="auto">
+                    <VStack spacing={4} align="stretch">
+                      {userPosts.length > 0 ? (
+                        userPosts.map(post => (
+                          <Post
+                            key={post.post_id}
+                            id={post.post_id}
+                            author={{
+                              id: profile.id,
+                              full_name: profile.full_name,
+                              username: profile.username,
+                              avatar_url: profile.avatar_url || ''
+                            }}
+                            content={post.content}
+                            timestamp={new Date(post.created_at).toLocaleString()}
+                            likes_count={post.likes_count}
+                            reposts_count={post.reposts_count}
+                            comments_count={post.comments_count}
+                          />
+                        ))
+                      ) : (
+                        <Text color="gray.500">No posts yet</Text>
+                      )}
+                    </VStack>
+                  </Box>
                 </TabPanel>
                 <TabPanel px={0}>
                   <VStack spacing={4} align="stretch">
