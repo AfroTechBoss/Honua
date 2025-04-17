@@ -12,5 +12,10 @@ export default defineConfig({
         secure: false,
       },
     },
+    hmr: {
+      protocol: 'ws',
+      host: 'localhost',
+      port: 5173
+    },
   },
 });
