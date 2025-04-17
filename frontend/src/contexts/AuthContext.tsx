@@ -2,10 +2,19 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase, getCurrentUser } from '../lib/supabase';
 
+interface UserProfile {
+  id: string;
+  username: string;
+  full_name: string;
+  avatar_url: string;
+  role: string;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  userProfile: UserProfile | null;
   signIn: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -19,16 +28,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  const fetchUserProfile = async (userId: string, force: boolean = false) => {
+    // Skip fetching if we already have the profile data and force refresh isn't requested
+    if (!force && userProfile && userProfile.id === userId) {
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+      setUserProfile(data);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
 
   useEffect(() => {
     // Initialize auth state and set up session handling
     const initializeAuth = async () => {
       try {
         setLoading(true);
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session;
         const currentUser = session?.user ?? null;
-        setSession(session);
-        setUser(currentUser);
+        
+        if (session && currentUser) {
+          setSession(session);
+          setUser(currentUser);
+          await fetchUserProfile(currentUser.id);
+        } else {
+          setSession(null);
+          setUser(null);
+          setUserProfile(null);
+        }
       } catch (error) {
         console.error('Error initializing auth:', error);
       } finally {
@@ -40,15 +79,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      setLoading(true);
+      if (!subscription) {
+        console.error('Failed to initialize auth subscription');
+        return;
+      }
+
       try {
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          const user = newSession?.user ?? null;
-          setUser(user);
-          setSession(newSession);
-        } else if (event === 'SIGNED_OUT') {
+        setLoading(true);
+
+        // Handle session state
+        if (!newSession || !newSession.user) {
           setUser(null);
           setSession(null);
+          setUserProfile(null);
+          return;
+        }
+
+        switch (event) {
+          case 'SIGNED_IN':
+          case 'TOKEN_REFRESHED':
+            const user = newSession.user;
+            if (!user) {
+              console.error('No user data in session');
+              return;
+            }
+            setUser(user);
+            setSession(newSession);
+            await fetchUserProfile(user.id, event === 'SIGNED_IN');
+            break;
+
+          case 'SIGNED_OUT':
+            setUser(null);
+            setSession(null);
+            setUserProfile(null);
+            break;
+
+          default:
+            // Handle any other auth events if needed
+            break;
         }
       } catch (error) {
         console.error('Error handling auth state change:', error);
@@ -136,6 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     user,
     loading,
+    userProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
