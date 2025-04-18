@@ -29,7 +29,19 @@ export const extractLinkPreviews = async (content: string): Promise<LinkPreview[
           });
 
           if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            // Handle 404 and other error statuses gracefully
+            const urlObj = new URL(url);
+            const domain = urlObj.hostname;
+            const siteName = domain.split('.').slice(-2, -1)[0] || domain;
+            const formattedSiteName = siteName.charAt(0).toUpperCase() + siteName.slice(1);
+            
+            return {
+              url,
+              title: formattedSiteName,
+              description: `Content from ${domain}`,
+              image: undefined,
+              siteName: domain
+            };
           }
 
           const preview = await response.json();

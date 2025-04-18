@@ -26,6 +26,7 @@ import ImageModal from './ImageModal';
 import { useNavigate } from 'react-router-dom';
 import { FaHeart, FaRetweet, FaComment, FaShare, FaEllipsisV, FaEdit, FaTrash } from 'react-icons/fa';
 import { extractLinkPreviews, LinkPreview } from '../utils/linkPreview';
+import { supabase } from '../lib/supabase';
 
 interface PostProps {
   id: string;
@@ -42,6 +43,12 @@ interface PostProps {
   reposts_count: number;
   comments_count: number;
   timestamp: string;
+  poll?: {
+    poll_id: string;
+    question: string;
+    options: { text: string; votes: number }[];
+    ends_at: string;
+  };
   onView?: () => void;
 }
 
@@ -75,40 +82,34 @@ const Post = ({
   const toast = useToast();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchLinkPreviews = async () => {
-      try {
-        const previews = await extractLinkPreviews(content);
-        setLinkPreviews(previews);
-      } catch (error) {
-        console.error('Error extracting link previews:', error);
-      }
-    };
+  const [poll, setPoll] = useState<PostProps['poll']>({ poll_id: '', question: '', options: [], ends_at: '' });
 
-    const fetchInteractionStatus = async () => {
-      if (!user || !id || typeof id !== 'string') {
-        return;
-      }
-      try {
+  useEffect(() => {
+  const fetchData = async () => {
+    try {
+      const previews = await extractLinkPreviews(content);
+      setLinkPreviews(previews);
+
+      if (user && id && typeof id === 'string') {
         const { isLiked: likedStatus, isReposted: repostedStatus } =
           await socialApi.getInteractionStatus(id, user.id);
         setIsLiked(likedStatus);
         setIsReposted(repostedStatus);
-      } catch (error) {
-        console.error('Error fetching interaction status:', error);
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to fetch interaction status',
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
       }
-    };
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to fetch data',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
 
-    fetchLinkPreviews();
-    fetchInteractionStatus();
-  }, [content, id, user]);
+  fetchData();
+}, [content, id, user]);
 
   const handleLike = useCallback(async () => {
     if (!id?.trim()) {
@@ -239,12 +240,90 @@ const Post = ({
       shadow="sm"
       _hover={{ shadow: 'md', cursor: 'pointer' }}
       onClick={(e) => {
+        const target = e.target as HTMLElement;
         // Prevent navigation if clicking on interactive elements
-        if (!(e.target as HTMLElement).closest('button, a')) {
+        if (!target.closest('button, a, textarea')) {
           navigate(`/post/${id}`);
         }
       }}
     >
+      {/* Poll Display */}
+      {poll && (
+        <Box mt={4} mb={4} p={4} borderWidth="1px" borderRadius="md">
+          <Text fontSize="lg" fontWeight="bold" mb={3}>
+            {poll.question}
+          </Text>
+          <VStack spacing={3} align="stretch">
+            {poll.options.map((option: { text: string; votes: number }, index: number) => (
+              <Box 
+                key={index}
+                p={3}
+                borderWidth="1px"
+                borderRadius="md"
+                cursor="pointer"
+                _hover={{ bg: 'gray.50' }}
+                onClick={async () => {
+                  if (!user) {
+                    toast({
+                      title: 'Authentication Required',
+                      description: 'Please sign in to vote',
+                      status: 'warning',
+                      duration: 3000,
+                      isClosable: true,
+                    });
+                    return;
+                  }
+                  
+                  try {
+                    const { data, error } = await supabase
+                      .from('polls')
+                      .update({
+                        options: poll.options.map((opt: { text: string; votes: number }, i: number) => 
+                          i === index ? { ...opt, votes: opt.votes + 1 } : opt
+                        ),
+                        total_votes: (poll.options.reduce((sum: number, opt: { text: string; votes: number }) => sum + opt.votes, 0) + 1)
+                      })
+                      .eq('poll_id', poll.poll_id)
+                      .select();
+
+                    if (error) throw error;
+
+                    // Update local state
+                    if (data) {
+                      const updatedPoll = {
+                        ...poll,
+                        options: data[0].options
+                      };
+                      // Update the poll state
+                      // Note: You'll need to implement a way to update the parent component's state
+                      setPoll(updatedPoll);
+                    }
+                  } catch (error) {
+                    console.error('Error voting on poll:', error);
+                    toast({
+                      title: 'Error',
+                      description: 'Failed to submit vote',
+                      status: 'error',
+                      duration: 3000,
+                      isClosable: true,
+                    });
+                  }
+                }}
+              >
+                <HStack justify="space-between">
+                  <Text>{option.text}</Text>
+                  <Text color="gray.500">{option.votes} votes</Text>
+                </HStack>
+              </Box>
+            ))}
+          </VStack>
+          {poll.ends_at && (
+            <Text fontSize="sm" color="gray.500" mt={2}>
+              Poll ends {new Date(poll.ends_at).toLocaleDateString()}
+            </Text>
+          )}
+        </Box>
+      )}
       <VStack align="stretch" spacing={4}>
         {/* Author Info */}
         <HStack spacing={3}>

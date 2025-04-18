@@ -274,8 +274,15 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }: CreatePostModalProp
         return;
       }
 
-      // Create post with media URLs
-      const createdPost = await postsApi.createPost(content, user.id, mediaUrl);
+      // Create post with media URLs and poll if active
+      const pollData = isPollActive && poll.question.trim() && poll.options.some(opt => opt.text.trim())
+        ? {
+            question: poll.question,
+            options: poll.options.filter(opt => opt.text.trim())
+          }
+        : undefined;
+      
+      const createdPost = await postsApi.createPost(content, user.id, mediaUrl, pollData);
       toast({
         title: 'Success',
         description: 'Post created successfully',

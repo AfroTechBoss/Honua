@@ -60,7 +60,7 @@ const postsApi = {
     }
   },
 
-  createPost: async (content: string, userId: string, media_url: string[] = []): Promise<Post> => {
+  createPost: async (content: string, userId: string, media_url: string[] = [], poll?: { question: string; options: { text: string; votes: number }[] }): Promise<Post> => {
     try {
       // Validate required fields
       if (!content?.trim()) {
@@ -70,13 +70,31 @@ const postsApi = {
         throw new Error('User must be authenticated to create a post');
       }
 
+      let pollId = null;
+      if (poll) {
+        // Create poll first if provided
+        const { data: pollData, error: pollError } = await supabase
+          .from('polls')
+          .insert([{
+            question: poll.question,
+            options: poll.options,
+            ends_at: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours from now
+          }])
+          .select()
+          .single();
+
+        if (pollError) throw pollError;
+        pollId = pollData.poll_id;
+      }
+
       // Create the post
       const { data, error } = await supabase
         .from('posts')
         .insert([{
           content: content.trim(),
           user_id: userId,
-          media_url: media_url.filter(url => url?.trim())
+          media_url: media_url.filter(url => url?.trim()),
+          poll_id: pollId
         }])
         .select(`
           *,
