@@ -228,9 +228,6 @@ const Post = ({
     }
   }, [id, toast]);
 
-
-  const memoizedLinkPreviews = useMemo(() => linkPreviews, [linkPreviews]);
-
   return (
     <Box
       borderWidth="1px"
