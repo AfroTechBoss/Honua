@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import socialApi from '../api/social';
 import { useAuth } from '../contexts/AuthContext';
 import { getRelativeTime } from '../utils/timeUtils';
@@ -109,18 +109,8 @@ const Post = ({
     fetchLinkPreviews();
     fetchInteractionStatus();
   }, [content, id, user]);
-  const handleLike = async () => {
-    if (!id) {
-      toast({
-        title: 'Error',
-        description: 'Post ID is required',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
 
+  const handleLike = useCallback(async () => {
     if (!id?.trim()) {
       toast({
         title: 'Error',
@@ -159,25 +149,14 @@ const Post = ({
         isClosable: true,
       });
     }
-  };
+  }, [id, user, likesCount, toast]);
 
-  const handleRepost = async () => {
+  const handleRepost = useCallback(async () => {
     if (!user) {
       toast({
         title: 'Authentication Required',
         description: 'Please sign in to repost',
         status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    if (!id || typeof id !== 'string' || id.trim() === '') {
-      toast({
-        title: 'Error',
-        description: 'Post ID is required',
-        status: 'error',
         duration: 3000,
         isClosable: true,
       });
@@ -211,9 +190,9 @@ const Post = ({
         isClosable: true,
       });
     }
-  };
+  }, [id, user, repostsCount, toast]);
 
-  const handleComment = () => {
+  const handleComment = useCallback(() => {
     if (!user) {
       toast({
         title: 'Authentication Required',
@@ -225,9 +204,9 @@ const Post = ({
       return;
     }
     navigate(`/post/${id}#comments`);
-  };
+  }, [user, navigate, id]);
 
-  const handleShare = async () => {
+  const handleShare = useCallback(async () => {
     try {
       const { url } = await socialApi.sharePost(id);
       await navigator.clipboard.writeText(url);
@@ -247,39 +226,7 @@ const Post = ({
         isClosable: true,
       });
     }
-  };
-
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Validate post ID
-    if (!id || typeof id !== 'string' || !id.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Invalid post ID',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    // Validate author information
-    if (!author?.username || typeof author.username !== 'string' || !author.username.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Invalid author information',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    // Navigate to the post detail page
-    navigate(`/${author.username}/post/${id}`, { state: { from: 'feed' } });
-  };
+  }, [id, toast]);
 
   return (
     <Box
@@ -287,9 +234,16 @@ const Post = ({
       borderRadius="lg"
       overflow="hidden"
       p={4}
+      mb={4}
       bg="white"
+      shadow="sm"
       _hover={{ shadow: 'md', cursor: 'pointer' }}
-      onClick={handleClick}
+      onClick={(e) => {
+        // Prevent navigation if clicking on interactive elements
+        if (!(e.target as HTMLElement).closest('button, a')) {
+          navigate(`/post/${id}`);
+        }
+      }}
     >
       <VStack align="stretch" spacing={4}>
         {/* Author Info */}

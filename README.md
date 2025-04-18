@@ -3,6 +3,12 @@
 ## Overview
 Honua is a modern social platform built to connect environmentally conscious individuals and communities. The platform enables users to share environmental initiatives, discuss sustainability practices, and collaborate on green projects.
 
+## Contact & Support
+For inquiries, feedback, or support, connect with us through:
+- 📧 [Email](mailto:info@honua.green)
+- [Twitter/X](https://x.com/Honua_Green)
+- Connect with our CTO [Chidile](https://x.com/0xAfroTechBoss) on X
+
 ## Tech Stack
 
 ### Frontend
