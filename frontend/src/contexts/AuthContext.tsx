@@ -43,10 +43,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        setUserProfile(null);
+        return;
+      }
       setUserProfile(data);
     } catch (error) {
       console.error('Error fetching user profile:', error);
+      setUserProfile(null);
     }
   };
 
@@ -79,19 +84,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      // Ensure loading state is set at the start of state change
+      setLoading(true);
+      
       if (!subscription) {
         console.error('Failed to initialize auth subscription');
+        setLoading(false);
         return;
       }
 
       try {
-        setLoading(true);
-
         // Handle session state
         if (!newSession || !newSession.user) {
           setUser(null);
           setSession(null);
           setUserProfile(null);
+          setLoading(false);
           return;
         }
 
@@ -101,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const user = newSession.user;
             if (!user) {
               console.error('No user data in session');
+              setLoading(false);
               return;
             }
             setUser(user);
