@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -13,7 +15,15 @@ import { User, Message } from '../types/messages';
 
 
 const Messages = () => {
+  const location = useLocation();
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
+  
+  useEffect(() => {
+    // Set the selected chat from navigation state if available
+    if (location.state?.chatId) {
+      setSelectedChat(location.state.chatId);
+    }
+  }, [location.state]);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
