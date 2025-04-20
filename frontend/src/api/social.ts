@@ -295,6 +295,62 @@ const socialApi = {
       console.error('Error deleting post:', error);
       throw error instanceof Error ? error : new Error('Failed to delete post');
     }
+  },
+
+  // Vote on a poll
+  votePoll: async (pollId: string, optionText: string, userId: string): Promise<{ success: boolean }> => {
+    try {
+      if (!pollId?.trim()) {
+        throw new Error('Poll ID is required');
+      }
+      if (!optionText?.trim()) {
+        throw new Error('Option text is required');
+      }
+      if (!userId?.trim()) {
+        throw new Error('User ID is required');
+      }
+
+      // Check if the poll exists
+      const { data: poll, error: pollError } = await supabase
+        .from('polls')
+        .select('poll_id')
+        .eq('poll_id', pollId)
+        .single();
+
+      if (pollError || !poll) {
+        throw new Error('Poll not found');
+      }
+
+      // Check if user has already voted
+      const { data: existingVote } = await supabase
+        .from('poll_votes')
+        .select('*')
+        .eq('poll_id', pollId)
+        .eq('user_id', userId)
+        .single();
+
+      if (existingVote) {
+        throw new Error('You have already voted on this poll');
+      }
+
+      // Record the vote
+      const { error: voteError } = await supabase
+        .from('poll_votes')
+        .insert([{
+          poll_id: pollId,
+          user_id: userId,
+          option_text: optionText,
+        }]);
+
+      if (voteError) {
+        throw new Error(`Failed to record vote: ${voteError.message}`);
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error voting on poll:', error);
+      throw error instanceof Error ? error : new Error('Failed to vote on poll');
+    }
   }
 };
 

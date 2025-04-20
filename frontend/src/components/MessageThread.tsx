@@ -100,8 +100,8 @@ const MessageThread = ({ selectedChatId }: MessageThreadProps) => {
             media: [
               {
                 type: 'image',
-                url: 'https://via.placeholder.com/300',
-                preview: 'https://via.placeholder.com/300',
+                url: 'https://placehold.co/300x300',
+                preview: 'https://placehold.co/300x300',
               },
             ],
           },
@@ -207,6 +207,9 @@ const MessageThread = ({ selectedChatId }: MessageThreadProps) => {
                             borderRadius="md"
                             maxH="200px"
                             cursor="pointer"
+                            fallback={<Box bg="gray.100" borderRadius="md" height="200px" width="300px" display="flex" alignItems="center" justifyContent="center">
+                              <Text color="gray.500">Image not available</Text>
+                            </Box>}
                           />
                         )}
                       </Box>

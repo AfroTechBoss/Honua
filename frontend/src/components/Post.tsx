@@ -26,7 +26,6 @@ import ImageModal from './ImageModal';
 import { useNavigate } from 'react-router-dom';
 import { FaHeart, FaRetweet, FaComment, FaShare, FaEllipsisV, FaEdit, FaTrash } from 'react-icons/fa';
 import { extractLinkPreviews, LinkPreview } from '../utils/linkPreview';
-import { supabase } from '../lib/supabase';
 
 interface PostProps {
   id: string;
@@ -61,9 +60,11 @@ const Post = ({
   reposts_count,
   comments_count,
   timestamp,
+  poll,
   onView,
 }: PostProps) => {
   const [isLiked, setIsLiked] = useState(false);
+  const [pollVotes, setPollVotes] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     if (onView) {
@@ -82,7 +83,7 @@ const Post = ({
   const toast = useToast();
   const navigate = useNavigate();
 
-  const [poll, setPoll] = useState<PostProps['poll']>({ poll_id: '', question: '', options: [], ends_at: '' });
+
 
   useEffect(() => {
   const fetchData = async () => {
@@ -95,6 +96,15 @@ const Post = ({
           await socialApi.getInteractionStatus(id, user.id);
         setIsLiked(likedStatus);
         setIsReposted(repostedStatus);
+
+        // Initialize poll votes
+        if (poll) {
+          const votes: { [key: string]: number } = {};
+          poll.options.forEach(option => {
+            votes[option.text] = option.votes;
+          });
+          setPollVotes(votes);
+        }
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -109,7 +119,7 @@ const Post = ({
   };
 
   fetchData();
-}, [content, id, user]);
+}, [content, id, user, poll]);
 
   const handleLike = useCallback(async () => {
     if (!id?.trim()) {
@@ -247,83 +257,6 @@ const Post = ({
         }
       }}
     >
-      {/* Poll Display */}
-      {poll && (
-        <Box mt={4} mb={4} p={4} borderWidth="1px" borderRadius="md">
-          <Text fontSize="lg" fontWeight="bold" mb={3}>
-            {poll.question}
-          </Text>
-          <VStack spacing={3} align="stretch">
-            {poll.options.map((option: { text: string; votes: number }, index: number) => (
-              <Box 
-                key={index}
-                p={3}
-                borderWidth="1px"
-                borderRadius="md"
-                cursor="pointer"
-                _hover={{ bg: 'gray.50' }}
-                onClick={async () => {
-                  if (!user) {
-                    toast({
-                      title: 'Authentication Required',
-                      description: 'Please sign in to vote',
-                      status: 'warning',
-                      duration: 3000,
-                      isClosable: true,
-                    });
-                    return;
-                  }
-                  
-                  try {
-                    const { data, error } = await supabase
-                      .from('polls')
-                      .update({
-                        options: poll.options.map((opt: { text: string; votes: number }, i: number) => 
-                          i === index ? { ...opt, votes: opt.votes + 1 } : opt
-                        ),
-                        total_votes: (poll.options.reduce((sum: number, opt: { text: string; votes: number }) => sum + opt.votes, 0) + 1)
-                      })
-                      .eq('poll_id', poll.poll_id)
-                      .select();
-
-                    if (error) throw error;
-
-                    // Update local state
-                    if (data) {
-                      const updatedPoll = {
-                        ...poll,
-                        options: data[0].options
-                      };
-                      // Update the poll state
-                      // Note: You'll need to implement a way to update the parent component's state
-                      setPoll(updatedPoll);
-                    }
-                  } catch (error) {
-                    console.error('Error voting on poll:', error);
-                    toast({
-                      title: 'Error',
-                      description: 'Failed to submit vote',
-                      status: 'error',
-                      duration: 3000,
-                      isClosable: true,
-                    });
-                  }
-                }}
-              >
-                <HStack justify="space-between">
-                  <Text>{option.text}</Text>
-                  <Text color="gray.500">{option.votes} votes</Text>
-                </HStack>
-              </Box>
-            ))}
-          </VStack>
-          {poll.ends_at && (
-            <Text fontSize="sm" color="gray.500" mt={2}>
-              Poll ends {new Date(poll.ends_at).toLocaleDateString()}
-            </Text>
-          )}
-        </Box>
-      )}
       <VStack align="stretch" spacing={4}>
         {/* Author Info */}
         <HStack spacing={3}>
@@ -333,7 +266,7 @@ const Post = ({
             name={author.full_name} 
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/profile/${author.username}`);
+              navigate(`/${author.username}`);
             }}
             cursor="pointer"
           />
@@ -342,7 +275,7 @@ const Post = ({
             spacing={0} 
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/profile/${author.username}`);
+              navigate(`/${author.username}`);
             }}
             cursor="pointer"
           >
@@ -560,6 +493,101 @@ const Post = ({
                 </GridItem>
               ))}
             </Grid>
+          </Box>
+        )}
+
+        {/* Poll */}
+        {poll && (
+          <Box
+            mt={4}
+            p={4}
+            borderWidth="1px"
+            borderRadius="lg"
+            borderColor="gray.200"
+          >
+            <Text fontWeight="bold" mb={3}>
+              {poll.question}
+            </Text>
+            <VStack spacing={3} align="stretch">
+              {poll.options.map((option, index) => {
+                const totalVotes = Object.values(pollVotes).reduce((a, b) => a + b, 0);
+                const percentage = totalVotes > 0 ? (pollVotes[option.text] / totalVotes) * 100 : 0;
+                
+                return (
+                  <Box key={index} position="relative">
+                    <Button
+                      width="100%"
+                      height="40px"
+                      variant="outline"
+                      onClick={async () => {
+                        if (!user) {
+                          toast({
+                            title: 'Authentication Required',
+                            description: 'Please sign in to vote',
+                            status: 'warning',
+                            duration: 3000,
+                            isClosable: true,
+                          });
+                          return;
+                        }
+                        try {
+                          // Update vote in the backend
+                          await socialApi.votePoll(poll.poll_id, option.text, user.id);
+                          
+                          // Update local state
+                          setPollVotes(prev => ({
+                            ...prev,
+                            [option.text]: prev[option.text] + 1
+                          }));
+                          
+                          toast({
+                            title: 'Vote Recorded',
+                            description: 'Your vote has been recorded successfully',
+                            status: 'success',
+                            duration: 2000,
+                            isClosable: true,
+                          });
+                        } catch (error) {
+                          toast({
+                            title: 'Error',
+                            description: 'Failed to record your vote',
+                            status: 'error',
+                            duration: 3000,
+                            isClosable: true,
+                          });
+                        }
+                      }}
+                    >
+                      <Text>{option.text}</Text>
+                    </Button>
+                    <Box
+                      position="absolute"
+                      left={0}
+                      top={0}
+                      height="100%"
+                      width={`${percentage}%`}
+                      bg="blue.100"
+                      opacity={0.3}
+                      borderRadius="md"
+                      transition="width 0.3s ease-in-out"
+                    />
+                    <Text
+                      position="absolute"
+                      right={2}
+                      top="50%"
+                      transform="translateY(-50%)"
+                      fontSize="sm"
+                      color="gray.500"
+                    >
+                      {percentage.toFixed(1)}%
+                    </Text>
+                  </Box>
+                );
+              })}
+            </VStack>
+            <Text fontSize="sm" color="gray.500" mt={2}>
+              Total votes: {Object.values(pollVotes).reduce((a, b) => a + b, 0)}
+            </Text>
           </Box>
         )}
 

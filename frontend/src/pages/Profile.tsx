@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -27,6 +27,7 @@ import TrendingTopics from '../components/TrendingTopics';
 import Post from '../components/Post';
 import { useAuth } from '../contexts/AuthContext';
 import { userService } from '../api/user.api';
+import messagesApi from '../api/messages';
 
 interface ProfileData {
   id: string;
@@ -185,6 +186,25 @@ const [userPosts, setUserPosts] = useState<Post[]>([]);
     onOpen();
   };
 
+  const navigate = useNavigate();
+
+  const handleMessage = async () => {
+    if (!user || !profile) return;
+    try {
+      const chat = await messagesApi.startChat(user.id, profile.id);
+      navigate('/messages', { state: { chatId: chat.chat_id } });
+    } catch (error) {
+      console.error('Error starting chat:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to start chat',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
   const handleProfileUpdate = async () => {
     try {
       const updatedProfile = await userService.getUserProfile(user?.id || '');
@@ -293,13 +313,22 @@ const [userPosts, setUserPosts] = useState<Post[]>([]);
                   </Button>
                 )}
                 {!isOwnProfile && (
-                  <Button
-                    onClick={handleFollow}
-                    colorScheme="blue"
-                    variant={isFollowing ? "outline" : "solid"}
-                  >
-                    {isFollowing ? "Unfollow" : "Follow"}
-                  </Button>
+                  <HStack spacing={2}>
+                    <Button
+                      onClick={handleFollow}
+                      colorScheme="blue"
+                      variant={isFollowing ? "outline" : "solid"}
+                    >
+                      {isFollowing ? "Unfollow" : "Follow"}
+                    </Button>
+                    <Button
+                      colorScheme="teal"
+                      onClick={handleMessage}
+                      leftIcon={<Icon as={FaEdit} />}
+                    >
+                      Message
+                    </Button>
+                  </HStack>
                 )}
 
                 {profile.bio && <Text>{profile.bio}</Text>}
