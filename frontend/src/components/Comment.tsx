@@ -161,10 +161,10 @@ const Comment = ({
             <Box flex={1}>
               <HStack justify="space-between" mb={1}>
                 <HStack>
-                  <Text fontWeight="bold">{author?.full_name}</Text>
-                  <Text color="gray.500">@{author?.username}</Text>
+                  <Text fontWeight="bold" color="black.900">{author?.full_name}</Text>
+                  <Text color="gray.600">@{author?.username}</Text>
                 </HStack>
-                <Text color="gray.500" fontSize="sm">
+                <Text color="gray.600" fontSize="sm">
                   {getRelativeTime(timestamp)}
                 </Text>
               </HStack>

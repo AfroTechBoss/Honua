@@ -251,7 +251,6 @@ const Post = ({
       _hover={{ shadow: 'md', cursor: 'pointer' }}
       onClick={(e) => {
         const target = e.target as HTMLElement;
-        // Prevent navigation if clicking on interactive elements
         if (!target.closest('button, a, textarea')) {
           navigate(`/post/${id}`);
         }
@@ -279,10 +278,10 @@ const Post = ({
             }}
             cursor="pointer"
           >
-            <Text fontWeight="bold">{author.full_name}</Text>
-            <Text color="gray.500">@{author.username}</Text>
+            <Text fontWeight="bold" color="gray.900">{author.full_name}</Text>
+            <Text color="gray.600">@{author.username}</Text>
           </VStack>
-          <Text color="gray.500" fontSize="sm" ml="auto">
+          <Text color="gray.600" fontSize="sm" ml="auto">
             {getRelativeTime(timestamp)}
           </Text>
           {user?.id === author.id && (
