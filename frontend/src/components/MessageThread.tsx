@@ -57,8 +57,10 @@ const MessageThread = ({ selectedChatId }: MessageThreadProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const messageEndRef = useRef<HTMLDivElement>(null);
 
-  const myMessageBg = useColorModeValue('blue.500', 'blue.400');
+  const myMessageBg = useColorModeValue('blue.500', 'blue.500');
   const theirMessageBg = useColorModeValue('gray.200', 'gray.600');
+  const textColor = useColorModeValue('gray.800', 'white');
+  const timestampColor = useColorModeValue('gray.600', 'gray.300');
 
   // Mock user ID - Replace with actual auth user ID
   const currentUserId = 'user1';
@@ -192,7 +194,7 @@ const MessageThread = ({ selectedChatId }: MessageThreadProps) => {
                 <Box>
                   <Box
                     bg={isMyMessage ? myMessageBg : theirMessageBg}
-                    color={isMyMessage ? 'white' : 'inherit'}
+                    color={isMyMessage ? 'white' : textColor}
                     px={4}
                     py={2}
                     borderRadius="lg"
@@ -220,7 +222,7 @@ const MessageThread = ({ selectedChatId }: MessageThreadProps) => {
                     justify={isMyMessage ? 'flex-end' : 'flex-start'}
                     mt={1}
                   >
-                    <Text fontSize="xs" color="gray.500">
+                    <Text fontSize="xs" color={timestampColor}>
                       {message.timestamp}
                     </Text>
                     {isMyMessage && (
