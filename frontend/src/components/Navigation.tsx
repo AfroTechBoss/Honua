@@ -9,6 +9,15 @@ import {
   Box,
   useColorModeValue,
   Spinner,
+  IconButton,
+  Drawer,
+  DrawerBody,
+  DrawerHeader,
+  DrawerOverlay,
+  DrawerContent,
+  DrawerCloseButton,
+  useDisclosure,
+  useBreakpointValue,
 } from '@chakra-ui/react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
@@ -20,6 +29,7 @@ import {
   FaUser,
   FaCog,
   FaUsers,
+  FaBars,
 } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
 import { userService, UserProfile } from '../api/user.api';
@@ -71,6 +81,8 @@ const Navigation = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const isMobile = useBreakpointValue({ base: true, md: false });
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -94,8 +106,9 @@ const Navigation = () => {
     messages: 2
   };
 
-  return (
+  const NavigationContent = () => (
     <VStack spacing={2} align="stretch" width="full">
+
       <Button
         as={RouterLink}
         to={profile?.username ? `/${profile.username}` : '/profile'}
@@ -139,6 +152,34 @@ const Navigation = () => {
       <NavItem icon={FaCog} label="Settings" to="/settings" />
     </VStack>
   );
+
+  if (isMobile) {
+    return (
+      <Box>
+        <IconButton
+          aria-label="Open menu"
+          icon={<Icon as={FaBars} />}
+          onClick={onOpen}
+          position="fixed"
+          top="4"
+          left="4"
+          zIndex="overlay"
+        />
+        <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
+          <DrawerOverlay />
+          <DrawerContent>
+            <DrawerCloseButton />
+            <DrawerHeader>Menu</DrawerHeader>
+            <DrawerBody>
+              <NavigationContent />
+            </DrawerBody>
+          </DrawerContent>
+        </Drawer>
+      </Box>
+    );
+  }
+
+  return <NavigationContent />;
 };
 
 export default Navigation;

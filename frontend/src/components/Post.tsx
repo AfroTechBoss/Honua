@@ -24,7 +24,8 @@ import {
 } from '@chakra-ui/react';
 import ImageModal from './ImageModal';
 import { useNavigate } from 'react-router-dom';
-import { FaHeart, FaRetweet, FaComment, FaShare, FaEllipsisV, FaEdit, FaTrash } from 'react-icons/fa';
+import { FaHeart, FaRetweet, FaComment, FaShare, FaEllipsisV, FaEdit, FaTrash, FaBookmark, FaFlag } from 'react-icons/fa';
+import ShareModal from './ShareModal';
 import { extractLinkPreviews, LinkPreview } from '../utils/linkPreview';
 
 interface PostProps {
@@ -79,6 +80,7 @@ const Post = ({
   const [editContent, setEditContent] = useState(content);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -217,27 +219,9 @@ const Post = ({
     navigate(`/post/${id}#comments`);
   }, [user, navigate, id]);
 
-  const handleShare = useCallback(async () => {
-    try {
-      const { url } = await socialApi.sharePost(id);
-      await navigator.clipboard.writeText(url);
-      toast({
-        title: 'Link Copied',
-        description: 'Post link copied to clipboard',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to copy link',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  }, [id, toast]);
+  const handleShare = useCallback(() => {
+    setIsShareModalOpen(true);
+  }, []);
 
   return (
     <Box
@@ -246,9 +230,11 @@ const Post = ({
       overflow="hidden"
       p={4}
       mb={4}
-      bg="white"
-      shadow="sm"
-      _hover={{ shadow: 'md', cursor: 'pointer' }}
+      bg="gray.800"
+      color="gray.100"
+      borderColor="gray.600"
+      shadow="md"
+      _hover={{ shadow: 'lg', cursor: 'pointer', borderColor: 'gray.500' }}
       onClick={(e) => {
         const target = e.target as HTMLElement;
         if (!target.closest('button, a, textarea')) {
@@ -278,79 +264,109 @@ const Post = ({
             }}
             cursor="pointer"
           >
-            <Text fontWeight="bold" color="gray.900">{author.full_name}</Text>
-            <Text color="gray.600">@{author.username}</Text>
+            <Text fontWeight="bold" color="white" fontSize="md">{author.full_name}</Text>
+            <Text color="gray.300" fontSize="sm">@{author.username}</Text>
           </VStack>
-          <Text color="gray.600" fontSize="sm" ml="auto">
+          <Text color="gray.300" fontSize="sm" ml="auto">
             {getRelativeTime(timestamp)}
           </Text>
-          {user?.id === author.id && (
-            <Menu>
-              <MenuButton
-                as={IconButton}
-                aria-label="Post options"
-                icon={<Icon as={FaEllipsisV} />}
-                variant="ghost"
-                size="sm"
-                onClick={(e) => e.stopPropagation()}
-              />
-              <MenuList onClick={(e) => e.stopPropagation()}>
-                <MenuItem
-                  icon={<Icon as={FaEdit} />}
-                  onClick={() => {
-                    setIsEditing(true);
-                    setEditContent(content);
-                  }}
-                >
-                  Edit Post
-                </MenuItem>
-                <MenuItem
-                  icon={<Icon as={FaTrash} />}
-                  onClick={async () => {
-                    try {
-                      // Validate post ID and user authentication
-                      if (!id) {
-                        throw new Error('Post ID is required');
-                      }
+          <Menu>
+            <MenuButton
+              as={IconButton}
+              aria-label="Post options"
+              icon={<Icon as={FaEllipsisV} />}
+              variant="ghost"
+              size="sm"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <MenuList onClick={(e) => e.stopPropagation()}>
+              {user?.id === author.id ? (
+                <>
+                  <MenuItem
+                    icon={<Icon as={FaEdit} />}
+                    onClick={() => {
+                      setIsEditing(true);
+                      setEditContent(content);
+                    }}
+                  >
+                    Edit Post
+                  </MenuItem>
+                  <MenuItem
+                    icon={<Icon as={FaTrash} />}
+                    onClick={async () => {
+                      try {
+                        if (!id || !user?.id) {
+                          throw new Error('Invalid post ID or user authentication');
+                        }
 
-                      const postId = String(id).trim();
-                      if (!postId) {
-                        throw new Error('Post ID cannot be empty');
+                        await socialApi.deletePost(id, user.id);
+                        
+                        toast({
+                          title: "Success",
+                          description: "Post deleted successfully",
+                          status: "success",
+                          duration: 3000,
+                          isClosable: true,
+                        });
+                        
+                        navigate("/");
+                      } catch (error) {
+                        console.error('Error deleting post:', error);
+                        toast({
+                          title: "Error",
+                          description: error instanceof Error ? error.message : "Failed to delete post",
+                          status: "error",
+                          duration: 3000,
+                          isClosable: true,
+                        });
                       }
-
-                      if (!user?.id) {
-                        throw new Error('User authentication required');
-                      }
-
-                      // Attempt to delete the post
-                      await socialApi.deletePost(postId, user.id);
-                      
+                    }}
+                  >
+                    Delete Post
+                  </MenuItem>
+                </>
+              ) : (
+                <>
+                  <MenuItem
+                    icon={<Icon as={FaBookmark} />}
+                    onClick={() => {
+                      // TODO: Implement bookmark functionality
                       toast({
-                        title: "Success",
-                        description: "Post deleted successfully",
-                        status: "success",
+                        title: "Coming Soon",
+                        description: "Bookmark functionality will be available soon",
+                        status: "info",
                         duration: 3000,
                         isClosable: true,
                       });
-                      
-                      navigate("/");
-                    } catch (error) {
-                      console.error('Error deleting post:', error);
+                    }}
+                  >
+                    Bookmark Post
+                  </MenuItem>
+                  <MenuItem
+                    icon={<Icon as={FaShare} />}
+                    onClick={handleShare}
+                  >
+                    Share Post
+                  </MenuItem>
+                  <MenuItem
+                    icon={<Icon as={FaFlag} />}
+                    onClick={() => {
+                      // TODO: Implement report functionality
                       toast({
-                        title: "Error",
-                        description: error instanceof Error ? error.message : "Failed to delete post",
-                        status: "error",
+                        title: "Coming Soon",
+                        description: "Report functionality will be available soon",
+                        status: "info",
                         duration: 3000,
                         isClosable: true,
                       });
-                    }
-                  }}
-                >
-                  Delete Post
-                </MenuItem>
-              </MenuList>
-            </Menu>
-          )}
+                    }}
+                  >
+                    Report Post
+                  </MenuItem>
+                </>
+              )}
+            </MenuList>
+          </Menu>
         </HStack>
 
         {/* Post Content */}
@@ -419,16 +435,17 @@ const Post = ({
             </HStack>
           </Box>
         ) : (
-          <Text>
+          <Text color="gray.100" fontSize="md" lineHeight="tall">
             {content.split(/(https?:\/\/[^\s]+)/g).map((part, index) => {
               if (part.match(/^https?:\/\//)) {
                 return (
                   <Link
                     key={index}
                     href={part}
-                    color="blue.500"
+                    color="blue.300"
                     isExternal
                     onClick={(e) => e.stopPropagation()}
+                    _hover={{ color: 'blue.200', textDecoration: 'underline' }}
                   >
                     {part}
                   </Link>
@@ -681,31 +698,18 @@ const Post = ({
             </Tooltip>
             <Text color="gray.500" fontSize="sm">{comments_count}</Text>
 
-            <Menu>
-              <Tooltip label="Share" placement="top">
-                <MenuButton
-                  as={IconButton}
-                  aria-label="Share options"
-                  icon={<Icon as={FaShare} color="gray.500" />}
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </Tooltip>
-              <MenuList onClick={(e) => e.stopPropagation()}>
-                <MenuItem onClick={handleShare}>Copy Link</MenuItem>
-                <MenuItem
-                  onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.origin + `/post/${id}`)}&text=${encodeURIComponent(content)}`, '_blank')}
-                >
-                  Share on Twitter
-                </MenuItem>
-                <MenuItem
-                  onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin + `/post/${id}`)}`, '_blank')}
-                >
-                  Share on Facebook
-                </MenuItem>
-              </MenuList>
-            </Menu>
+            <Tooltip label="Share" placement="top">
+              <IconButton
+                aria-label="Share"
+                icon={<Icon as={FaShare} color="gray.500" />}
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleShare();
+                }}
+              />
+            </Tooltip>
           </HStack>
       </VStack>
       {media_urls && media_urls.length > 0 && (
@@ -717,6 +721,12 @@ const Post = ({
           onIndexChange={setCurrentImageIndex}
         />
       )}
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        postId={id}
+        postUrl={`${window.location.origin}/post/${id}`}
+      />
     </Box>
   );
 };
